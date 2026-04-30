@@ -12,7 +12,6 @@
         <div>
             <div class="brand-mark">WT</div>
             <h1>水利数字孪生系统</h1>
-            <p class="sidebar-text">面向点云语义分割、巡检对比与统计导出的多页面分析平台。</p>
         </div>
 
         <nav class="nav-menu">
@@ -36,83 +35,84 @@
         <section class="hero-card">
             <div>
                 <div class="eyebrow">Digital Twin for Water Conservancy</div>
-                <h2>面向水利场景点云的语义分割、标签对比与巡检分析平台</h2>
+                <h2>面向水利巡检、防洪预警辅助与堤坝岸坡隐患排查的点云智能分析系统</h2>
                 <p class="hero-copy">
-                    本系统聚焦水利场景三维点云智能解译任务，围绕堤坝、沟渠、水边线、道路、植被和居民地等地物，提供原始标签可视化、PointNet 语义分割推理、原始标签与预测结果对比、业务类别统计以及巡检告警导出。
+                    本项目以点云语义分割为核心，围绕原始标签可视化、预测结果对比、分类统计、风险区域定位、自动巡检报告、防洪预警辅助、堤坝岸坡隐患排查和 AI 风险问答，形成从数据接入到业务分析输出的完整闭环。
                 </p>
             </div>
             <div class="hero-actions">
                 <a class="btn btn-primary" href="viewer.html">进入点云分析</a>
-                <a class="btn btn-outline" href="report.html">查看统计导出</a>
+                <a class="btn btn-outline" href="ai.html">进入 AI 助手</a>
             </div>
         </section>
 
         <section class="overview-grid">
             <article class="feature-card">
                 <div class="feature-index">01</div>
-                <h3>点云数据接入</h3>
-                <p>支持 `.pth` / `.npy` 点云文件上传，自动读取三维坐标、RGB 颜色与原始语义标签信息。</p>
+                <h3>点云上传与标签对比</h3>
+                <p>支持 `.pth` / `.npy` 点云文件上传，读取三维坐标、RGB 与原始 label 标签，并在分析页对原始标签和预测结果进行对比可视化。</p>
             </article>
             <article class="feature-card">
                 <div class="feature-index">02</div>
-                <h3>分割结果对比</h3>
-                <p>基于 PointNet 完成语义分割，在对比模式中左侧显示原始标签，右侧显示预测结果，并支持语义类和业务类同步切换。</p>
+                <h3>分割结果联动分析</h3>
+                <p>基于 PointNet 完成语义分割，支持原始点云、语义着色、业务着色切换，并结合类别图例与业务统计进行高亮筛选和定位分析。</p>
             </article>
             <article class="feature-card">
                 <div class="feature-index">03</div>
-                <h3>巡检统计导出</h3>
-                <p>自动汇总语义类别与业务类别点数占比，并对堤坝、沟渠、水边线、斜坡等重点区域生成巡检提示和统计导出。</p>
+                <h3>风险输出与成果导出</h3>
+                <p>自动汇总语义类别和业务类别点数占比，生成风险区域、巡检建议、隐患图册以及 PDF/Word 报告，并为防洪和岸坡排查提供辅助判断。</p>
             </article>
         </section>
 
         <section class="dashboard-grid">
             <article class="info-card">
-                <div class="section-kicker">项目目标</div>
-                <h3>服务于水利地物识别和巡检辅助分析</h3>
+                <div class="section-kicker">系统能力</div>
+                <h3>围绕水利点云场景构建完整分析链路</h3>
                 <ul class="flat-list">
-                    <li><strong>识别对象：</strong>居民地设施、交通、水系、地形、植被农田等 15 类地物。</li>
-                    <li><strong>核心技术：</strong>Three.js 三维点云可视化、PointNet 语义分割、业务类别聚合分析。</li>
-                    <li><strong>输出结果：</strong>标签对比视图、业务统计占比、重点区域巡检告警、CSV/JSON 导出。</li>
+                    <li><strong>识别对象：</strong>覆盖棚屋、房屋、道路、边坡、陡坎、堤坝、水边线、沟渠、植被农田等 15 类地物。</li>
+                    <li><strong>核心模块：</strong>点云分析、统计导出、巡检提示、防洪预警、堤坝岸坡排查、AI 助手。</li>
+                    <li><strong>核心技术：</strong>FastAPI、Three.js、PointNet 语义分割、空间风险区域定位与统一评分逻辑。</li>
+                    <li><strong>成果输出：</strong>分类占比统计、风险区域截图、隐患图册、PDF/Word 巡检报告、智能问答分析结果。</li>
                 </ul>
             </article>
 
             <article class="info-card">
-                <div class="section-kicker">分析流程</div>
-                <h3>从原始点云到业务结果的一条完整链路</h3>
+                <div class="section-kicker">业务流程</div>
+                <h3>从原始点云到风险研判与报告生成</h3>
                 <div class="flow-steps">
-                    <div class="flow-step">上传原始点云</div>
-                    <div class="flow-step">读取 RGB 与原始标签</div>
-                    <div class="flow-step">执行语义分割推理</div>
-                    <div class="flow-step">原始标签与预测结果对比</div>
-                    <div class="flow-step">业务类别聚合统计</div>
-                    <div class="flow-step">巡检提示与结果导出</div>
+                    <div class="flow-step">上传原始点云文件</div>
+                    <div class="flow-step">读取坐标、颜色与原始标签</div>
+                    <div class="flow-step">执行 PointNet 语义分割推理</div>
+                    <div class="flow-step">对比原始标签与预测结果</div>
+                    <div class="flow-step">生成分类统计与风险区域</div>
+                    <div class="flow-step">输出巡检、预警、排查与报告结果</div>
                 </div>
             </article>
         </section>
 
         <section class="application-section">
             <div class="section-kicker">Practical Applications</div>
-            <h3>可扩展的实际业务功能</h3>
+            <h3>当前项目可落地和可继续扩展的应用方向</h3>
             <div class="application-grid">
                 <article class="application-card hot">
-                    <div class="app-tag">优先推荐</div>
+                    <div class="app-tag">当前已具备基础能力</div>
                     <h4>防洪预警辅助</h4>
-                    <p>结合水边线、居民地、道路、沟渠和坝体占比，识别滨水暴露目标与重点巡查区，为防汛巡查提供风险排序。</p>
+                    <p>结合水边线、沟渠、堤坝、居民地、道路与人工输入的水情雨情参数，对当前场景给出风险评分和重点排查建议。</p>
                 </article>
                 <article class="application-card">
-                    <div class="app-tag">工程巡检</div>
+                    <div class="app-tag">当前已实现</div>
                     <h4>堤坝与岸坡隐患排查</h4>
-                    <p>根据坝体、边坡、陡坎、裸地和水边线组合关系，提示冲刷、滑坡、坍塌和渗漏相关关注点。</p>
+                    <p>根据堤坝、边坡、陡坎、裸地、水边线和沟渠的空间分布关系，提示冲刷、滑塌、坍塌、渗漏等隐患关注区域。</p>
                 </article>
                 <article class="application-card">
-                    <div class="app-tag">排水治理</div>
-                    <h4>沟渠淤积与排水异常识别</h4>
-                    <p>当沟渠、水边线、裸地占比异常升高时，生成排水压力提示，辅助安排清淤、疏通和复测任务。</p>
+                    <div class="app-tag">当前已实现</div>
+                    <h4>自动巡检与报告生成</h4>
+                    <p>围绕一次点云分析任务自动输出分类统计、巡检建议、风险区域截图、隐患图册和 PDF/Word 巡检报告。</p>
                 </article>
                 <article class="application-card">
                     <div class="app-tag">后续升级</div>
-                    <h4>多期点云变化监测</h4>
-                    <p>接入不同时期点云后，可比较岸线后退、裸地扩张、坡面变化和工程结构变化，形成趋势预警。</p>
+                    <h4>多期变化监测与数字孪生预警</h4>
+                    <p>后续可继续接入多时相点云、水位、雨情、气象和传感器数据，扩展为动态变化监测和多源联动预警平台。</p>
                 </article>
             </div>
         </section>
