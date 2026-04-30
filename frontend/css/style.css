@@ -434,10 +434,9 @@ body {
 }
 
 .export-panel--inline {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
     gap: 12px;
-    width: 100%;
 }
 
 .export-card-btn {
@@ -448,8 +447,9 @@ body {
 }
 
 .export-card-btn--inline {
-    min-height: 52px;
-    padding: 0 18px;
+    min-width: 138px;
+    min-height: 46px;
+    padding: 0 20px;
     background: rgba(255,255,255,0.9);
     border: 1px solid rgba(23,108,143,0.22);
     color: #164d63;
@@ -463,14 +463,27 @@ body {
 }
 
 .page-header-card--report {
-    align-items: stretch;
+    align-items: center;
+    gap: 28px;
+    padding: 24px 28px;
+}
+
+.page-header-card__intro {
+    min-width: 0;
+}
+
+.page-header-card__intro .hero-copy {
+    margin-top: 10px;
+    white-space: nowrap;
+    max-width: none;
 }
 
 .page-header-card__actions {
     display: flex;
-    align-items: flex-end;
-    width: 100%;
-    max-width: 760px;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 1;
+    min-width: 0;
 }
 
 .report-layout {
@@ -1688,7 +1701,13 @@ body {
     }
 
     .export-panel--inline {
+        display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .page-header-card__intro .hero-copy {
+        white-space: normal;
     }
 
     .hero-card h2,

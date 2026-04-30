@@ -13,7 +13,7 @@ PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
 RESULTS_DIR = os.path.join(DATA_DIR, "results")
 
 # 模型配置
-POINTNET_DIR = r"E:\desktop\pointnet"
+POINTNET_DIR = r"E:\desktop\graduate_project\pointnet"
 MODEL_CHECKPOINT = os.path.join(
     POINTNET_DIR,
     "log", "pointnet_sem_seg", "2026-04-05_21-02", "checkpoints", "best_model.pth"
