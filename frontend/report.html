@@ -12,7 +12,6 @@
         <div>
             <div class="brand-mark">WT</div>
             <h1>水利数字孪生系统</h1>
-            <p class="sidebar-text">查看当前任务统计结果、告警摘要和 CSV / JSON 导出入口。</p>
         </div>
 
         <nav class="nav-menu">
@@ -33,12 +32,20 @@
     </aside>
 
     <main class="site-main">
-        <section class="page-header-card">
+        <section class="page-header-card page-header-card--report">
             <div>
                 <div class="eyebrow">Statistics & Export</div>
                 <h2>分类统计与结果下载</h2>
+                <p class="hero-copy">CSV 导出内容为语义类别与业务类别点数占比统计，JSON 导出包含统计结果和巡检信息，PDF 和 Word 会自动下载巡检报告。</p>
             </div>
-            
+            <div class="page-header-card__actions">
+                <div class="export-panel export-panel--inline">
+                    <button class="btn btn-outline export-card-btn export-card-btn--inline" id="btnExportJson">导出 JSON</button>
+                    <button class="btn btn-outline export-card-btn export-card-btn--inline" id="btnExportCsv">导出 CSV</button>
+                    <button class="btn btn-outline export-card-btn export-card-btn--inline" id="btnInspectionPdf">巡检报告 PDF</button>
+                    <button class="btn btn-outline export-card-btn export-card-btn--inline" id="btnInspectionDocx">巡检报告 Word</button>
+                </div>
+            </div>
         </section>
 
         <section class="summary-grid" id="reportSummaryGrid">
@@ -64,14 +71,6 @@
             <article class="info-card">
                 <div class="section-kicker">语义类别统计</div>
                 <h3>按语义标签统计点数占比</h3>
-                <p class="sidebar-text">导出功能已整合到本容器中，可直接下载统计结果和巡检报告。</p>
-                <div class="export-panel">
-                    <button class="btn btn-primary" id="btnExportJson">导出 JSON</button>
-                    <button class="btn btn-outline" id="btnExportCsv">导出 CSV</button>
-                    <button class="btn btn-outline" id="btnInspectionPdf">巡检报告 PDF</button>
-                    <button class="btn btn-outline" id="btnInspectionDocx">巡检报告 Word</button>
-                </div>
-                <p class="sidebar-text">CSV 导出内容为语义类别与业务类别点数占比统计，JSON 导出包含统计结果和巡检信息，PDF 和 Word 会自动下载巡检报告。</p>
                 <div id="classStatsList" class="stack-list empty-copy">暂无数据</div>
             </article>
 

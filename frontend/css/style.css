@@ -427,6 +427,52 @@ body {
     flex-wrap: wrap;
 }
 
+.export-panel--cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.export-panel--inline {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+
+.export-card-btn {
+    min-height: 56px;
+    justify-content: center;
+    border-radius: 14px;
+    font-weight: 600;
+}
+
+.export-card-btn--inline {
+    min-height: 52px;
+    padding: 0 18px;
+    background: rgba(255,255,255,0.9);
+    border: 1px solid rgba(23,108,143,0.22);
+    color: #164d63;
+    white-space: nowrap;
+}
+
+.export-card-btn--inline:hover {
+    background: rgba(255,255,255,1);
+    border-color: rgba(23,108,143,0.38);
+    color: #123f52;
+}
+
+.page-header-card--report {
+    align-items: stretch;
+}
+
+.page-header-card__actions {
+    display: flex;
+    align-items: flex-end;
+    width: 100%;
+    max-width: 760px;
+}
+
 .report-layout {
     align-items: start;
 }
@@ -1639,6 +1685,10 @@ body {
     .page-header-card {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .export-panel--inline {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .hero-card h2,
