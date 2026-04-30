@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水利数字孪生系统 | 点云分析</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="site-body">
+<div class="site-shell site-shell--analysis">
+    <aside class="site-sidebar">
+        <div>
+            <div class="brand-mark">WT</div>
+            <h1>水利数字孪生系统</h1>
+            <p class="sidebar-text">点云渲染、标签着色与原始标签/预测结果对比分析。</p>
+        </div>
+
+        <nav class="nav-menu">
+            <a class="nav-link" href="index.html">项目总览</a>
+            <a class="nav-link active" href="viewer.html">点云分析</a>
+            <a class="nav-link" href="report.html">统计与导出</a>
+            <a class="nav-link" href="inspection.html">巡检提示</a>
+            <a class="nav-link" href="flood.html">防洪预警</a>
+            <a class="nav-link" href="embankment.html">堤坝岸坡排查</a>
+            <a class="nav-link" href="ai.html">AI 助手</a>
+        </nav>
+    </aside>
+
+    <main class="analysis-main">
+        <aside class="analysis-leftpanel">
+            <details class="fold-group" open>
+                <summary class="fold-summary">数据管理</summary>
+                <div class="fold-content">
+                    <div class="panel-section">
+                        <input type="file" id="fileInput" class="file-input" accept=".pth,.npy">
+                        <button class="btn btn-primary btn-block" onclick="document.getElementById('fileInput').click()">
+                            上传点云文件
+                        </button>
+                        <div id="fileInfo" class="file-info" style="margin-top:10px;display:none;"></div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="fold-group" open id="actionSection" style="display:none;">
+                <summary class="fold-summary">分析操作</summary>
+                <div class="fold-content">
+                    <div class="panel-section panel-section--compact">
+                        <button class="btn btn-primary btn-block" id="btnPredict" onclick="runPrediction()">
+                            执行语义分割
+                        </button>
+                        <div style="margin-top:10px;">
+                            <div class="btn-group" id="modeGroup">
+                                <button class="btn btn-outline btn-sm active" data-mode="original" onclick="switchMode('original')">原始点云</button>
+                                <button class="btn btn-outline btn-sm" data-mode="semantic" onclick="switchMode('semantic')">语义着色</button>
+                                <button class="btn btn-outline btn-sm" data-mode="business" onclick="switchMode('business')">业务着色</button>
+                            </div>
+                        </div>
+                        <div style="margin-top:10px;">
+                            <div class="btn-group" id="viewModeGroup">
+                                <button class="btn btn-outline btn-sm active" data-view-mode="single" onclick="switchViewMode('single')">普通查看</button>
+                                <button class="btn btn-outline btn-sm" data-view-mode="compare" onclick="switchViewMode('compare')">对比查看</button>
+                            </div>
+                        </div>
+                        <div style="margin-top:10px;">
+                            <label class="form-label">点数限制（0=全部）</label>
+                            <input type="number" id="downsampleInput" value="500000" min="0" step="50000" class="form-input">
+                        </div>
+                        <div style="margin-top:10px;">
+                            <label class="form-label">类别筛选模式</label>
+                            <div class="btn-group" id="highlightModeGroup">
+                                <button class="btn btn-outline btn-sm active" data-highlight-mode="dim" onclick="setHighlightFilterMode('dim')">高亮筛选</button>
+                                <button class="btn btn-outline btn-sm" data-highlight-mode="hide" onclick="setHighlightFilterMode('hide')">仅显示选中</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="fold-group" id="sceneSection" style="display:none;">
+                <summary class="fold-summary">场景信息</summary>
+                <div class="fold-content">
+                    <div class="panel-section panel-section--compact">
+                        <div id="sceneInfo" class="file-info"></div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="fold-group" open>
+                <summary class="fold-summary">类别图例</summary>
+                <div class="fold-content">
+                    <div class="panel-section panel-section--compact">
+                        <ul class="legend-list" id="legendList">
+                            <li style="font-size:12px;color:var(--text-light);">上传并分割后显示</li>
+                        </ul>
+                    </div>
+                </div>
+            </details>
+
+            <details class="fold-group" id="statsSection" style="display:none;">
+                <summary class="fold-summary">业务统计</summary>
+                <div class="fold-content">
+                    <div class="panel-section panel-section--compact">
+                        <div id="businessStats"></div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="fold-group" id="riskSection" style="display:none;" open>
+                <summary class="fold-summary">风险区域定位</summary>
+                <div class="fold-content">
+                    <div class="panel-section panel-section--compact">
+                        
+                        <div class="risk-actions">
+                            <button class="btn btn-outline btn-sm" id="btnFocusTopRisk" onclick="focusTopRiskRegion()">定位最高风险区</button>
+                            <button class="btn btn-outline btn-sm" id="btnExportScreenshot" onclick="exportViewportScreenshot()">导出当前截图</button>
+                            <button class="btn btn-outline btn-sm" id="btnExportHazardAtlas" onclick="generateHazardAtlas()">导出隐患图册</button>
+                        </div>
+                        <div class="risk-region-list" id="riskRegionList">
+                            <div class="empty-copy">完成分割后显示风险区域列表。</div>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+                    </aside>
+
+        <section class="analysis-stage analysis-stage--full">
+            <div class="analysis-stage__header">
+                <div>
+                    <div class="section-kicker">Point Cloud Workspace</div>
+                    <h2>原始标签与预测结果对比分析</h2>
+                </div>
+                <div class="mini-status" id="analysisStatusText">未加载任务</div>
+            </div>
+
+            <div class="viewport viewport--page" id="viewport">
+                <div class="viewport-grid single" id="viewportGrid">
+                    <div class="viewport-pane" id="viewportPaneSingle">
+                        <div class="viewport-canvas" id="viewportSingle"></div>
+                        <div class="viewport-overlay" id="viewportInfoSingle">
+                            鼠标左键旋转 | 右键平移 | 滚轮缩放
+                        </div>
+                    </div>
+                    <div class="viewport-pane compare-only" id="viewportPaneCompare">
+                        <div class="viewport-canvas" id="viewportCompare"></div>
+                        <div class="viewport-overlay" id="viewportInfoCompare">
+                            对比分割结果
+                        </div>
+                    </div>
+                </div>
+                <div class="loading-overlay" id="loadingOverlay">
+                    <div class="spinner"></div>
+                    <div id="loadingText">加载中...</div>
+                </div>
+                <div class="empty-state" id="emptyState" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:16px;">
+                    请上传点云文件开始使用
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/shared-state.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

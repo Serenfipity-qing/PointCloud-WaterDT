@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水利数字孪生系统 | 注册</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="site-body login-body">
+<main class="login-shell">
+    <section class="login-card">
+        <div class="brand-mark">WT</div>
+        <div class="eyebrow">Create Account</div>
+        <h1>注册账号</h1>
+        <p class="hero-copy">创建新账号后即可登录访问系统。</p>
+
+        <form id="registerForm" class="login-form">
+            <label class="form-label" for="username">用户名</label>
+            <input class="form-input login-input" id="username" name="username" type="text" required>
+
+            <label class="form-label" for="password">密码</label>
+            <input class="form-input login-input" id="password" name="password" type="password" required>
+
+            <label class="form-label" for="confirmPassword">确认密码</label>
+            <input class="form-input login-input" id="confirmPassword" name="confirm_password" type="password" required>
+
+            <button class="btn btn-primary btn-block" id="btnRegister" type="submit">注册</button>
+            <div id="registerError" class="login-error"></div>
+        </form>
+
+        <div class="login-tip">
+            <a href="/login.html">返回登录</a>
+        </div>
+    </section>
+</main>
+
+<script src="js/auth.js"></script>
+</body>
+</html>

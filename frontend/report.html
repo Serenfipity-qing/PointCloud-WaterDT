@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水利数字孪生系统 | 统计与导出</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="site-body">
+<div class="site-shell">
+    <aside class="site-sidebar">
+        <div>
+            <div class="brand-mark">WT</div>
+            <h1>水利数字孪生系统</h1>
+            <p class="sidebar-text">查看当前任务统计结果、告警摘要和 CSV / JSON 导出入口。</p>
+        </div>
+
+        <nav class="nav-menu">
+            <a class="nav-link" href="index.html">项目总览</a>
+            <a class="nav-link" href="viewer.html">点云分析</a>
+            <a class="nav-link active" href="report.html">统计与导出</a>
+            <a class="nav-link" href="inspection.html">巡检提示</a>
+            <a class="nav-link" href="flood.html">防洪预警</a>
+            <a class="nav-link" href="embankment.html">堤坝岸坡排查</a>
+            <a class="nav-link" href="ai.html">AI 助手</a>
+        </nav>
+
+        <div class="sidebar-panel" id="reportTaskCard">
+            <div class="sidebar-label">当前任务</div>
+            <div class="sidebar-value">未分析</div>
+            <div class="sidebar-text">请先前往点云分析页上传并完成一次分割任务。</div>
+        </div>
+    </aside>
+
+    <main class="site-main">
+        <section class="page-header-card">
+            <div>
+                <div class="eyebrow">Statistics & Export</div>
+                <h2>分类统计与结果下载</h2>
+                <p class="hero-copy">这个页面聚焦统计结果展示和文件导出，巡检提示已经独立拆分到单独页面。</p>
+            </div>
+            
+        </section>
+
+        <section class="summary-grid" id="reportSummaryGrid">
+            <article class="stat-card">
+                <div class="sidebar-label">总点数</div>
+                <div class="big-metric" id="metricTotalPoints">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">语义类别数</div>
+                <div class="big-metric" id="metricClassCount">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">业务类别数</div>
+                <div class="big-metric" id="metricBusinessCount">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">任务状态</div>
+                <div class="big-metric" id="metricTaskState">-</div>
+            </article>
+        </section>
+
+        <section class="dashboard-grid report-layout">
+            <article class="info-card">
+                <div class="section-kicker">语义类别统计</div>
+                <h3>按语义标签统计点数占比</h3>
+                <div class="export-panel">
+                    <button class="btn btn-primary" id="btnExportJson">导出 JSON</button>
+                    <button class="btn btn-outline" id="btnExportCsv">导出 CSV</button>
+                    <button class="btn btn-outline" id="btnInspectionPdf">巡检报告 PDF</button>
+                    <button class="btn btn-outline" id="btnInspectionDocx">巡检报告 Word</button>
+                </div>
+                <p class="sidebar-text">CSV 导出内容为语义类别与业务类别点数占比统计，JSON 导出包含统计结果和巡检信息，PDF 和 Word 会自动下载巡检报告。</p>
+                <div id="classStatsList" class="stack-list empty-copy">暂无数据</div>
+            </article>
+
+            <article class="info-card">
+                <div class="section-kicker">业务类别统计</div>
+                <h3>按业务大类汇总点数占比</h3>
+                <div id="reportBusinessStats" class="stack-list empty-copy">暂无数据</div>
+            </article>
+        </section>
+
+    </main>
+</div>
+
+<script src="js/shared-state.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/report.js"></script>
+</body>
+</html>

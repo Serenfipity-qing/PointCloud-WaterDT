@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水利数字孪生系统 | 防洪预警</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="site-body">
+<div class="site-shell">
+    <aside class="site-sidebar">
+        <div>
+            <div class="brand-mark">WT</div>
+            <h1>水利数字孪生系统</h1>
+            <p class="sidebar-text">结合点云语义结果、水位和降雨输入，生成防洪巡查辅助预警。</p>
+        </div>
+
+        <nav class="nav-menu">
+            <a class="nav-link" href="index.html">项目总览</a>
+            <a class="nav-link" href="viewer.html">点云分析</a>
+            <a class="nav-link" href="report.html">统计与导出</a>
+            <a class="nav-link" href="inspection.html">巡检提示</a>
+            <a class="nav-link active" href="flood.html">防洪预警</a>
+            <a class="nav-link" href="embankment.html">堤坝岸坡排查</a>
+            <a class="nav-link" href="ai.html">AI 助手</a>
+        </nav>
+
+        <div class="sidebar-panel" id="floodTaskCard">
+            <div class="sidebar-label">当前任务</div>
+            <div class="sidebar-value">未分析</div>
+            <div class="sidebar-text">完成点云分割后，可结合场景标签占比计算防洪风险。</div>
+        </div>
+    </aside>
+
+    <main class="site-main">
+        <section class="page-header-card">
+            <div>
+                <div class="eyebrow">Flood Warning Assistant</div>
+                <h2>防洪预警辅助分析</h2>
+                <p class="hero-copy">根据水边线、沟渠、坝体、居民地、道路等点云语义占比，叠加水位、降雨和人工巡查条件，输出风险等级与巡查建议。</p>
+            </div>
+            
+        </section>
+
+        <section class="flood-layout">
+            <article class="info-card flood-control-card">
+                <div class="section-kicker">预警参数</div>
+                <h3>输入实时水情与降雨条件</h3>
+                <form id="floodForm" class="flood-form">
+                    <label>
+                        <span class="form-label">当前水位 / m</span>
+                        <input class="form-input" type="number" step="0.1" min="0" name="water_level" placeholder="例如 3.2">
+                    </label>
+                    <label>
+                        <span class="form-label">警戒水位 / m</span>
+                        <input class="form-input" type="number" step="0.1" min="0" name="warning_level" placeholder="例如 4.5">
+                    </label>
+                    <label>
+                        <span class="form-label">24h 降雨量 / mm</span>
+                        <input class="form-input" type="number" step="1" min="0" name="rainfall" placeholder="例如 35">
+                    </label>
+                    <label>
+                        <span class="form-label">未来 6h 预报降雨 / mm</span>
+                        <input class="form-input" type="number" step="1" min="0" name="forecast_rainfall" placeholder="例如 18">
+                    </label>
+                    <label>
+                        <span class="form-label">排水状态</span>
+                        <select class="form-input" name="drainage_status">
+                            <option value="normal">正常</option>
+                            <option value="limited">局部受阻</option>
+                            <option value="blocked">明显堵塞</option>
+                        </select>
+                    </label>
+                    <button class="btn btn-primary btn-block" type="submit">计算防洪风险</button>
+                </form>
+            </article>
+
+            <article class="flood-result-card" id="floodResultCard">
+                <div class="section-kicker">预警结果</div>
+                <div class="flood-level" id="floodLevelText">等待计算</div>
+                <div class="flood-score"><span id="floodScoreText">-</span><small>/ 100</small></div>
+                <p id="floodSummaryText">请输入水情参数，并确保已有点云分割结果。</p>
+                <div class="flood-score-bar"><span id="floodScoreBar"></span></div>
+            </article>
+        </section>
+
+        <section class="summary-grid">
+            <article class="stat-card">
+                <div class="sidebar-label">滨水暴露指数</div>
+                <div class="big-metric" id="metricFloodExposure">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">岸线冲刷指数</div>
+                <div class="big-metric" id="metricErosion">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">排水压力指数</div>
+                <div class="big-metric" id="metricDrainage">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">水位接近度</div>
+                <div class="big-metric" id="metricWaterLevel">-</div>
+            </article>
+        </section>
+
+        <section class="dashboard-grid">
+            <article class="info-card">
+                <div class="section-kicker">风险来源</div>
+                <h3>综合判定依据</h3>
+                <div id="floodFactors" class="stack-list empty-copy">暂无风险来源</div>
+            </article>
+
+            <article class="info-card">
+                <div class="section-kicker">处置建议</div>
+                <h3>防汛巡查建议</h3>
+                <div id="floodActions" class="stack-list empty-copy">暂无建议</div>
+            </article>
+        </section>
+    </main>
+</div>
+
+<script src="js/shared-state.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/flood.js"></script>
+</body>
+</html>

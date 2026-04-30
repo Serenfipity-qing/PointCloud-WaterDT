@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "provider": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "model": "gpt-5-nano",
+  "api_key": "replace-with-your-openai-api-key",
+  "system_prompt": "你是水利数字孪生系统的风险分析助手。你必须基于提供的点云统计、巡检告警、风险区域定位结果进行回答。回答必须使用简体中文，重点说明哪里最危险、为什么危险、建议先检查什么，避免编造未提供的数据。"
+}

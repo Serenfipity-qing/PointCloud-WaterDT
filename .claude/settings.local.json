@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(conda run -n water_twin python E:/desktop/water_twin_system/_check_deps.py 2>&1)",
+      "Bash(conda run -n water_twin python E:/desktop/water_twin_system/_test_model.py 2>&1)",
+      "Bash(conda run -n water_twin pip install aiofiles 2>&1 | tail -3)",
+      "Bash(curl -s http://localhost:8000/api/meta 2>&1 | head -30)",
+      "Bash(tasklist 2>/dev/null | grep -i python | head -5; netstat -ano 2>/dev/null | grep 8000 | head -5)",
+      "Bash(conda run -n water_twin python E:/desktop/water_twin_system/_test_api.py 2>&1)",
+      "Bash(taskkill //F //PID 14592 2>/dev/null; taskkill //F //PID 17464 2>/dev/null; echo \"done\")",
+      "Bash(netstat -ano 2>/dev/null | grep \":8000 \" | grep LISTEN)",
+      "Bash(taskkill //F //PID 17464 2>/dev/null; echo \"done\")",
+      "Read(//mnt/e/desktop/**)",
+      "Read(//e/desktop/**)",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/controls/OrbitControls.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/controls/OrbitControls.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js\")"
+    ]
+  }
+}

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水利数字孪生系统 | 堤坝岸坡隐患排查</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="site-body">
+<div class="site-shell">
+    <aside class="site-sidebar">
+        <div>
+            <div class="brand-mark">WT</div>
+            <h1>水利数字孪生系统</h1>
+            <p class="sidebar-text">基于点云标签占比，排查堤坝和岸坡区域的结构隐患与稳定性风险。</p>
+        </div>
+
+        <nav class="nav-menu">
+            <a class="nav-link" href="index.html">项目总览</a>
+            <a class="nav-link" href="viewer.html">点云分析</a>
+            <a class="nav-link" href="report.html">统计与导出</a>
+            <a class="nav-link" href="inspection.html">巡检提示</a>
+            <a class="nav-link" href="flood.html">防洪预警</a>
+            <a class="nav-link active" href="embankment.html">堤坝岸坡排查</a>
+            <a class="nav-link" href="ai.html">AI 助手</a>
+        </nav>
+
+        <div class="sidebar-panel" id="embankmentTaskCard">
+            <div class="sidebar-label">当前任务</div>
+            <div class="sidebar-value">未分析</div>
+            <div class="sidebar-text">请先在点云分析页完成语义分割。</div>
+        </div>
+    </aside>
+
+    <main class="site-main">
+        <section class="page-header-card">
+            <div>
+                <div class="eyebrow">Embankment Check</div>
+                <h2>堤坝岸坡隐患排查</h2>
+                <p class="hero-copy">围绕坝体、边坡、陡坎、裸地、水边线和居民地暴露占比，判断堤坝岸坡是否存在冲刷、失稳和受影响目标集中问题。</p>
+            </div>
+            
+        </section>
+
+        <section class="embankment-hero">
+            <article class="embankment-score-card">
+                <div class="section-kicker">风险判定</div>
+                <div class="embankment-level" id="embankmentRiskLevel">等待计算</div>
+                <div class="embankment-score"><span id="embankmentRiskScore">-</span><small>/ 100</small></div>
+                <p id="embankmentRiskSummary">请先完成点云分割，系统将基于标签占比判断堤坝岸坡风险。</p>
+            </article>
+
+            <article class="info-card">
+                <div class="section-kicker">关键指标</div>
+                <div class="embankment-metric-grid">
+                    <div><span>坝体</span><strong id="metricDam">-</strong></div>
+                    <div><span>边坡</span><strong id="metricSlope">-</strong></div>
+                    <div><span>陡坎</span><strong id="metricScarp">-</strong></div>
+                    <div><span>裸地</span><strong id="metricBareland">-</strong></div>
+                    <div><span>水边线</span><strong id="metricWaterline">-</strong></div>
+                    <div><span>暴露目标</span><strong id="metricAssets">-</strong></div>
+                </div>
+            </article>
+        </section>
+
+        <section class="dashboard-grid">
+            <article class="info-card">
+                <div class="section-kicker">隐患依据</div>
+                <h3>为什么这样判</h3>
+                <div id="embankmentFactors" class="stack-list empty-copy">暂无依据</div>
+            </article>
+
+            <article class="info-card">
+                <div class="section-kicker">排查建议</div>
+                <h3>现场检查动作</h3>
+                <div id="embankmentActions" class="stack-list empty-copy">暂无建议</div>
+            </article>
+        </section>
+    </main>
+</div>
+
+<script src="js/shared-state.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/embankment.js"></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水利数字孪生系统 | 巡检提示</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="site-body">
+<div class="site-shell">
+    <aside class="site-sidebar">
+        <div>
+            <div class="brand-mark">WT</div>
+            <h1>水利数字孪生系统</h1>
+            <p class="sidebar-text">集中展示当前任务的巡检风险提示、总体研判和处置建议。</p>
+        </div>
+
+        <nav class="nav-menu">
+            <a class="nav-link" href="index.html">项目总览</a>
+            <a class="nav-link" href="viewer.html">点云分析</a>
+            <a class="nav-link" href="report.html">统计与导出</a>
+            <a class="nav-link active" href="inspection.html">巡检提示</a>
+            <a class="nav-link" href="flood.html">防洪预警</a>
+            <a class="nav-link" href="embankment.html">堤坝岸坡排查</a>
+            <a class="nav-link" href="ai.html">AI 助手</a>
+        </nav>
+
+        <div class="sidebar-panel" id="inspectionTaskCard">
+            <div class="sidebar-label">当前任务</div>
+            <div class="sidebar-value">未分析</div>
+            <div class="sidebar-text">请先在点云分析页完成一次分割任务。</div>
+        </div>
+    </aside>
+
+    <main class="site-main">
+        <section class="page-header-card">
+            <div>
+                <div class="eyebrow">Inspection Risk Center</div>
+                <h2>基于标签点数占比与组合关系的巡检风险分析</h2>
+                <p class="hero-copy">系统会结合水边线、沟渠、坝体、边坡、裸地以及居民地和道路等目标占比，给出更接近实际场景的巡检判断。</p>
+            </div>
+            
+        </section>
+
+        <section class="summary-grid">
+            <article class="stat-card">
+                <div class="sidebar-label">总体风险等级</div>
+                <div class="big-metric" id="inspectionOverallLevel">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">总体风险分数</div>
+                <div class="big-metric" id="inspectionOverallScore">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">高等级告警</div>
+                <div class="big-metric" id="inspectionHighCount">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">中低等级告警</div>
+                <div class="big-metric" id="inspectionAlertCount">-</div>
+            </article>
+        </section>
+
+        <section class="dashboard-grid">
+            <article class="info-card">
+                <div class="section-kicker">巡检提示列表</div>
+                <h3>当前分析任务的重点风险信息</h3>
+                <div id="inspectionAlerts" class="stack-list empty-copy">暂无告警</div>
+            </article>
+
+            <article class="info-card">
+                <div class="section-kicker">总体研判</div>
+                <h3 id="inspectionSummaryTitle">等待分析结果</h3>
+                <p class="sidebar-text" id="inspectionSummaryMessage">巡检系统会根据点云标签占比和组合关系生成风险解释。</p>
+                <div id="inspectionRecommendations" class="stack-list empty-copy">暂无建议</div>
+            </article>
+        </section>
+    </main>
+</div>
+
+<script src="js/shared-state.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/inspection.js"></script>
+</body>
+</html>
