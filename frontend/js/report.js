@@ -64,19 +64,22 @@ function renderReport() {
 }
 
 function fillStatistics(statistics) {
+    const nonZeroClassStats = (statistics.class_stats || []).filter((item) => Number(item.count) > 0);
+    const nonZeroBusinessStats = (statistics.business_stats || []).filter((item) => Number(item.count) > 0);
+
     totalPointsEl.textContent = (statistics.total_points || 0).toLocaleString();
-    classCountEl.textContent = (statistics.class_stats || []).length;
-    businessCountEl.textContent = (statistics.business_stats || []).length;
+    classCountEl.textContent = nonZeroClassStats.length;
+    businessCountEl.textContent = nonZeroBusinessStats.length;
     taskStateEl.textContent = currentTask?.hasPrediction ? '已完成' : '待分析';
 
-    classStatsList.innerHTML = (statistics.class_stats || []).map((item) => `
+    classStatsList.innerHTML = nonZeroClassStats.map((item) => `
         <div class="stack-row">
             <span>${item.name_cn} (${item.name})</span>
             <strong>${item.count.toLocaleString()} / ${item.ratio}%</strong>
         </div>
     `).join('') || '<div class="empty-copy">暂无数据</div>';
 
-    businessStatsList.innerHTML = (statistics.business_stats || []).map((item) => `
+    businessStatsList.innerHTML = nonZeroBusinessStats.map((item) => `
         <div class="stack-row">
             <span>${item.name}</span>
             <strong>${item.count.toLocaleString()} / ${item.ratio}%</strong>
