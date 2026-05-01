@@ -99,6 +99,11 @@ class AdminDeleteUserPayload(BaseModel):
     username: str
 
 
+class AdminResetPasswordPayload(BaseModel):
+    username: str
+    new_password: str
+
+
 class AdminClearLogsPayload(BaseModel):
     username: str | None = None
 
@@ -326,6 +331,21 @@ async def admin_unlock_user(payload: AdminDeleteUserPayload, admin_username: str
         raise HTTPException(404, "用户不存在")
     unlock_user(username)
     log_auth_event(admin_username, "admin_unlock_user", True, detail=f"解锁用户 {username}")
+    return {"ok": True}
+
+
+@router.post("/auth/admin/users/reset-password")
+async def admin_reset_user_password(payload: AdminResetPasswordPayload, admin_username: str = Depends(_require_admin)):
+    username = payload.username.strip()
+    row = get_user(username)
+    if not row:
+        raise HTTPException(404, "用户不存在")
+    password_error = validate_password_strength(payload.new_password)
+    if password_error:
+        raise HTTPException(400, password_error)
+    update_password(username, payload.new_password)
+    remove_user_sessions(username)
+    log_auth_event(admin_username, "admin_reset_password", True, detail=f"重置用户 {username} 的密码并清理会话")
     return {"ok": True}
 
 

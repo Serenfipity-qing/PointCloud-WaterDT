@@ -54,16 +54,7 @@
             </article>
         </section>
 
-        <section class="dashboard-grid">
-            <article class="info-card">
-                <div class="section-kicker">审计日志</div>
-                <div class="security-card-head">
-                    <h3>最近 50 条安全事件</h3>
-                    <button class="btn btn-outline btn-sm" id="btnClearAllLogs">清空审计日志</button>
-                </div>
-                <div id="securityLogs" class="stack-list empty-copy">加载中...</div>
-            </article>
-
+        <section class="dashboard-grid security-dashboard-grid">
             <article class="info-card">
                 <div class="section-kicker">新增用户</div>
                 <h3>管理员创建账号</h3>
@@ -78,16 +69,41 @@
                     <div id="adminCreateUserError" class="login-error"></div>
                 </form>
             </article>
+
+            <article class="info-card security-panel-card">
+                <div class="section-kicker">用户管理</div>
+                <div class="security-card-head">
+                    <h3>账号状态与管理操作</h3>
+                    <div class="sidebar-text">支持冻结、解冻、解锁、重置密码、删除和定向清理该用户审计日志。</div>
+                </div>
+                <div id="securityUsers" class="security-user-grid security-scroll-panel">
+                    <div class="empty-copy">加载中...</div>
+                </div>
+            </article>
         </section>
 
-        <section class="info-card">
-            <div class="section-kicker">用户管理</div>
+        <section class="info-card security-panel-card">
+            <div class="section-kicker">审计日志</div>
             <div class="security-card-head">
-                <h3>账号状态与管理操作</h3>
-                <div class="sidebar-text">支持冻结、解冻、解锁、删除和定向清理该用户审计日志。</div>
+                <h3>最近 50 条安全事件</h3>
+                <button class="btn btn-outline btn-sm" id="btnClearAllLogs">清空审计日志</button>
             </div>
-            <div id="securityUsers" class="security-user-grid">
-                <div class="empty-copy">加载中...</div>
+            <div id="securityLogs" class="stack-list empty-copy security-scroll-panel">加载中...</div>
+        </section>
+
+        <section class="security-reset-modal" id="securityResetModal" hidden>
+            <div class="security-reset-modal__backdrop" data-close-reset-modal></div>
+            <div class="security-reset-modal__card">
+                <div class="security-card-head">
+                    <h3>重置用户密码</h3>
+                    <button class="btn btn-outline btn-sm" type="button" data-close-reset-modal>关闭</button>
+                </div>
+                <form id="adminResetPasswordForm" class="login-form login-form--compact">
+                    <input class="form-input" id="adminResetTarget" name="username" type="text" readonly>
+                    <input class="form-input" name="new_password" type="password" placeholder="输入新密码">
+                    <button class="btn btn-primary btn-block" id="btnAdminResetPassword" type="submit">重置密码</button>
+                    <div id="adminResetPasswordError" class="login-error"></div>
+                </form>
             </div>
         </section>
     </main>

@@ -9,6 +9,10 @@ const usersEl = document.getElementById('securityUsers');
 const btnClearAllLogs = document.getElementById('btnClearAllLogs');
 const createUserForm = document.getElementById('adminCreateUserForm');
 const createUserErrorEl = document.getElementById('adminCreateUserError');
+const resetPasswordModal = document.getElementById('securityResetModal');
+const resetPasswordForm = document.getElementById('adminResetPasswordForm');
+const resetPasswordErrorEl = document.getElementById('adminResetPasswordError');
+const resetTargetEl = document.getElementById('adminResetTarget');
 
 loadSecurityOverview();
 bindSecurityActions();
@@ -78,6 +82,7 @@ function renderOverview(data) {
                 <div class="security-user-actions">
                     <button class="btn btn-outline btn-sm" data-action="freeze" data-username="${escapeHtml(item.username)}" data-frozen="${item.is_frozen ? '0' : '1'}">${item.is_frozen ? '解冻' : '冻结'}</button>
                     <button class="btn btn-outline btn-sm" data-action="unlock" data-username="${escapeHtml(item.username)}">解锁</button>
+                    <button class="btn btn-outline btn-sm" data-action="reset-password" data-username="${escapeHtml(item.username)}">重置密码</button>
                     <button class="btn btn-outline btn-sm" data-action="clear-user-logs" data-username="${escapeHtml(item.username)}">清空日志</button>
                     <button class="btn btn-outline btn-sm" data-action="delete" data-username="${escapeHtml(item.username)}">删除</button>
                 </div>
@@ -95,6 +100,7 @@ function formatEventType(type) {
         account_locked: '账号锁定',
         register: '注册',
         change_password: '修改密码',
+        admin_reset_password: '管理员重置密码',
         unlock_success: '账号解锁',
         unlock_failed: '账号解锁',
         admin_create_user: '管理员创建用户',
@@ -143,6 +149,10 @@ function bindSecurityActions() {
         await postSecurityAction('/api/auth/admin/logs/clear', {});
     });
 
+    document.querySelectorAll('[data-close-reset-modal]').forEach((el) => {
+        el.addEventListener('click', closeResetPasswordModal);
+    });
+
     createUserForm?.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!createUserForm || !createUserErrorEl) return;
@@ -178,6 +188,8 @@ function bindSecurityActions() {
                 });
             } else if (action === 'unlock') {
                 await postSecurityAction('/api/auth/admin/users/unlock', { username });
+            } else if (action === 'reset-password') {
+                openResetPasswordModal(username);
             } else if (action === 'delete') {
                 if (!confirm(`确认删除用户 ${username}？`)) return;
                 await postSecurityAction('/api/auth/admin/users/delete', { username });
@@ -187,6 +199,27 @@ function bindSecurityActions() {
             }
         } catch (err) {
             alert(err.message || '操作失败');
+        }
+    });
+
+    resetPasswordForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!resetPasswordForm || !resetPasswordErrorEl || !resetTargetEl) return;
+        resetPasswordErrorEl.textContent = '';
+        const formData = new FormData(resetPasswordForm);
+        try {
+            await postSecurityAction('/api/auth/admin/users/reset-password', {
+                username: String(formData.get('username') || '').trim(),
+                new_password: String(formData.get('new_password') || ''),
+            }, false);
+            resetPasswordErrorEl.style.color = 'var(--success)';
+            resetPasswordErrorEl.textContent = '密码重置成功，目标用户会话已失效';
+            resetPasswordForm.reset();
+            resetTargetEl.value = String(formData.get('username') || '');
+            await loadSecurityOverview();
+        } catch (err) {
+            resetPasswordErrorEl.style.color = 'var(--danger)';
+            resetPasswordErrorEl.textContent = err.message || '重置失败';
         }
     });
 }
@@ -206,4 +239,17 @@ async function postSecurityAction(path, payload, autoReload = true) {
         await loadSecurityOverview();
     }
     return res.json().catch(() => ({}));
+}
+
+function openResetPasswordModal(username) {
+    if (!resetPasswordModal || !resetTargetEl || !resetPasswordErrorEl) return;
+    resetTargetEl.value = username;
+    resetPasswordErrorEl.textContent = '';
+    resetPasswordErrorEl.style.color = 'var(--danger)';
+    resetPasswordModal.hidden = false;
+}
+
+function closeResetPasswordModal() {
+    if (!resetPasswordModal) return;
+    resetPasswordModal.hidden = true;
 }
