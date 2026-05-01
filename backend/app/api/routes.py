@@ -12,13 +12,21 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..auth import (
+    clear_auth_logs,
+    count_admin_users,
     SESSION_COOKIE_NAME,
     create_session,
     create_user,
+    delete_user,
+    freeze_user,
+    get_admin_security_overview,
     get_current_user,
     get_security_overview,
     get_user,
+    is_admin_user,
+    is_user_frozen,
     is_user_locked,
+    list_users,
     log_auth_event,
     remove_session,
     remove_user_sessions,
@@ -74,6 +82,25 @@ class RegisterPayload(BaseModel):
 class ChangePasswordPayload(BaseModel):
     current_password: str
     new_password: str
+
+
+class AdminCreateUserPayload(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+
+
+class AdminFreezeUserPayload(BaseModel):
+    username: str
+    frozen: bool
+
+
+class AdminDeleteUserPayload(BaseModel):
+    username: str
+
+
+class AdminClearLogsPayload(BaseModel):
+    username: str | None = None
 
 
 class UnlockPayload(BaseModel):
@@ -133,6 +160,12 @@ def _clear_login_failures(key: str) -> None:
     _login_attempts.pop(key, None)
 
 
+def _require_admin(username: str = Depends(get_current_user)) -> str:
+    if not is_admin_user(username):
+        raise HTTPException(403, "仅管理员可访问该功能")
+    return username
+
+
 @router.post("/auth/login")
 async def login(payload: LoginPayload, response: Response, request: Request):
     username = payload.username.strip()
@@ -140,6 +173,9 @@ async def login(payload: LoginPayload, response: Response, request: Request):
     user_agent = request.headers.get("user-agent", "")
     key = _enforce_login_rate_limit(request, username)
     user_row = get_user(username)
+    if is_user_frozen(user_row):
+        log_auth_event(username, "login_frozen", False, client_ip, user_agent, "账号已被冻结")
+        raise HTTPException(403, "账号已被冻结，请联系管理员")
     locked, locked_until = is_user_locked(user_row)
     if locked:
         log_auth_event(username, "login_blocked_locked", False, client_ip, user_agent, f"锁定至 {locked_until}")
@@ -189,7 +225,7 @@ async def register(payload: RegisterPayload):
     if get_user(username):
         raise HTTPException(400, "用户名已存在")
 
-    create_user(username, payload.password)
+    create_user(username, payload.password, role="user")
     log_auth_event(username, "register", True, detail="账号注册成功")
     return {"ok": True}
 
@@ -237,12 +273,83 @@ async def logout(response: Response, session_token: str | None = Cookie(default=
 
 @router.get("/auth/me")
 async def get_me(username: str = Depends(get_current_user)):
-    return {"authenticated": True, "username": username}
+    return {"authenticated": True, "username": username, "is_admin": is_admin_user(username)}
 
 
 @router.get("/auth/security-overview")
-async def security_overview(username: str = Depends(get_current_user)):
-    return get_security_overview(username)
+async def security_overview(username: str = Depends(_require_admin)):
+    data = get_admin_security_overview()
+    data["current_admin"] = username
+    return data
+
+
+@router.post("/auth/admin/users")
+async def admin_create_user(payload: AdminCreateUserPayload, admin_username: str = Depends(_require_admin)):
+    username = payload.username.strip()
+    role = "admin" if payload.role == "admin" else "user"
+    username_error = validate_username(username)
+    if username_error:
+        raise HTTPException(400, username_error)
+    password_error = validate_password_strength(payload.password)
+    if password_error:
+        raise HTTPException(400, password_error)
+    if get_user(username):
+        raise HTTPException(400, "用户名已存在")
+    create_user(username, payload.password, role=role)
+    log_auth_event(admin_username, "admin_create_user", True, detail=f"创建用户 {username}，角色 {role}")
+    return {"ok": True}
+
+
+@router.post("/auth/admin/users/freeze")
+async def admin_freeze_user(payload: AdminFreezeUserPayload, admin_username: str = Depends(_require_admin)):
+    username = payload.username.strip()
+    if username == admin_username:
+        raise HTTPException(400, "不能冻结当前管理员账号")
+    row = get_user(username)
+    if not row:
+        raise HTTPException(404, "用户不存在")
+    freeze_user(username, payload.frozen)
+    log_auth_event(
+        admin_username,
+        "admin_unfreeze_user" if not payload.frozen else "admin_freeze_user",
+        True,
+        detail=f"{'解冻' if not payload.frozen else '冻结'}用户 {username}",
+    )
+    return {"ok": True}
+
+
+@router.post("/auth/admin/users/unlock")
+async def admin_unlock_user(payload: AdminDeleteUserPayload, admin_username: str = Depends(_require_admin)):
+    username = payload.username.strip()
+    row = get_user(username)
+    if not row:
+        raise HTTPException(404, "用户不存在")
+    unlock_user(username)
+    log_auth_event(admin_username, "admin_unlock_user", True, detail=f"解锁用户 {username}")
+    return {"ok": True}
+
+
+@router.post("/auth/admin/users/delete")
+async def admin_delete_user(payload: AdminDeleteUserPayload, admin_username: str = Depends(_require_admin)):
+    username = payload.username.strip()
+    row = get_user(username)
+    if not row:
+        raise HTTPException(404, "用户不存在")
+    if username == admin_username:
+        raise HTTPException(400, "不能删除当前管理员账号")
+    if str(row["role"] or "user") == "admin" and count_admin_users() <= 1:
+        raise HTTPException(400, "至少需要保留一个管理员账号")
+    delete_user(username)
+    log_auth_event(admin_username, "admin_delete_user", True, detail=f"删除用户 {username}")
+    return {"ok": True}
+
+
+@router.post("/auth/admin/logs/clear")
+async def admin_clear_logs(payload: AdminClearLogsPayload, admin_username: str = Depends(_require_admin)):
+    target = payload.username.strip() if payload.username else None
+    clear_auth_logs(target)
+    log_auth_event(admin_username, "admin_clear_logs", True, detail=f"清空审计日志：{target or '全部'}")
+    return {"ok": True}
 
 
 @router.post("/upload")

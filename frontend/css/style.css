@@ -861,6 +861,116 @@ body {
     margin-top: 10px;
 }
 
+.security-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.security-log {
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(24,64,78,0.08);
+    background: rgba(255,255,255,0.88);
+}
+
+.security-log--high {
+    border-color: rgba(216,74,58,0.28);
+    background: rgba(255,244,243,0.96);
+}
+
+.security-log--medium {
+    border-color: rgba(217,144,33,0.24);
+    background: rgba(255,249,239,0.96);
+}
+
+.security-log__time {
+    color: var(--text-light);
+    font-size: 12px;
+}
+
+.security-log__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.security-log__meta {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-light);
+    line-height: 1.6;
+}
+
+.security-user-grid {
+    display: grid;
+    gap: 14px;
+}
+
+.security-user-card {
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(24,64,78,0.1);
+    background: rgba(255,255,255,0.9);
+}
+
+.security-user-card__head {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 10px;
+}
+
+.security-user-card__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #102c36;
+}
+
+.security-user-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(23,108,143,0.08);
+    color: #176c8f;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.security-user-role.admin {
+    background: rgba(240,180,41,0.14);
+    color: #8a5b00;
+}
+
+.security-user-meta {
+    font-size: 12px;
+    color: var(--text-light);
+    line-height: 1.6;
+}
+
+.security-user-status {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.security-user-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
 /* Header */
 .header {
     background: linear-gradient(135deg, #1a73e8, #0d47a1);

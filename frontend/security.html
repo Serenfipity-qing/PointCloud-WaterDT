@@ -29,47 +29,66 @@
     <main class="site-main">
         <section class="page-header-card">
             <div>
-                <div class="eyebrow">Account Security</div>
-                <h2>登录安全与审计记录</h2>
-                <p class="hero-copy">查看当前账号的登录安全状态、最近成功登录信息以及近期登录审计记录。</p>
+                <div class="eyebrow">Admin Security Center</div>
+                <h2>管理员安全中心与用户管理</h2>
+                <p class="hero-copy">仅管理员可访问。支持异常事件高亮、审计日志清理、账号冻结/解冻/解锁/删除和新增用户。</p>
             </div>
         </section>
 
         <section class="summary-grid">
             <article class="stat-card">
-                <div class="sidebar-label">账号状态</div>
-                <div class="big-metric" id="securityLockState">-</div>
+                <div class="sidebar-label">用户总数</div>
+                <div class="big-metric" id="securityTotalUsers">-</div>
             </article>
             <article class="stat-card">
-                <div class="sidebar-label">失败计数</div>
-                <div class="big-metric" id="securityFailedCount">-</div>
+                <div class="sidebar-label">管理员数量</div>
+                <div class="big-metric" id="securityAdminCount">-</div>
             </article>
             <article class="stat-card">
-                <div class="sidebar-label">上次登录</div>
-                <div class="big-metric" id="securityLastLogin">-</div>
+                <div class="sidebar-label">冻结账号</div>
+                <div class="big-metric" id="securityFrozenCount">-</div>
             </article>
             <article class="stat-card">
-                <div class="sidebar-label">上次登录 IP</div>
-                <div class="big-metric" id="securityLastIp">-</div>
+                <div class="sidebar-label">异常事件</div>
+                <div class="big-metric" id="securityAbnormalCount">-</div>
             </article>
         </section>
 
         <section class="dashboard-grid">
             <article class="info-card">
-                <div class="section-kicker">近期审计</div>
-                <h3>最近 20 条安全事件</h3>
+                <div class="section-kicker">审计日志</div>
+                <div class="security-card-head">
+                    <h3>最近 50 条安全事件</h3>
+                    <button class="btn btn-outline btn-sm" id="btnClearAllLogs">清空审计日志</button>
+                </div>
                 <div id="securityLogs" class="stack-list empty-copy">加载中...</div>
             </article>
 
             <article class="info-card">
-                <div class="section-kicker">锁定说明</div>
-                <h3>账号锁定与解锁策略</h3>
-                <ul class="flat-list">
-                    <li>同一账号连续失败达到阈值后会被临时锁定 10 分钟。</li>
-                    <li>可在登录页使用“账号解锁”功能，输入正确用户名和密码手动解锁。</li>
-                    <li>修改密码后，系统会自动使其他会话失效。</li>
-                </ul>
+                <div class="section-kicker">新增用户</div>
+                <h3>管理员创建账号</h3>
+                <form id="adminCreateUserForm" class="login-form login-form--compact">
+                    <input class="form-input" name="username" type="text" placeholder="用户名">
+                    <input class="form-input" name="password" type="password" placeholder="初始密码">
+                    <select class="form-input" name="role">
+                        <option value="user">普通用户</option>
+                        <option value="admin">管理员</option>
+                    </select>
+                    <button class="btn btn-primary btn-block" id="btnAdminCreateUser" type="submit">新增用户</button>
+                    <div id="adminCreateUserError" class="login-error"></div>
+                </form>
             </article>
+        </section>
+
+        <section class="info-card">
+            <div class="section-kicker">用户管理</div>
+            <div class="security-card-head">
+                <h3>账号状态与管理操作</h3>
+                <div class="sidebar-text">支持冻结、解冻、解锁、删除和定向清理该用户审计日志。</div>
+            </div>
+            <div id="securityUsers" class="security-user-grid">
+                <div class="empty-copy">加载中...</div>
+            </div>
         </section>
     </main>
 </div>

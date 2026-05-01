@@ -23,7 +23,11 @@ async function guardPage() {
             return;
         }
         const data = await res.json();
-        injectUserMenu(data.username);
+        if (pageName === 'security.html' && !data.is_admin) {
+            window.location.href = '/index.html';
+            return;
+        }
+        injectUserMenu(data.username, Boolean(data.is_admin));
     } catch (err) {
         redirectToLogin();
     }
@@ -161,7 +165,7 @@ function initChangePasswordPage() {
     );
 }
 
-function injectUserMenu(username) {
+function injectUserMenu(username, isAdmin = false) {
     if (document.querySelector('[data-user-menu]')) {
         return;
     }
@@ -177,7 +181,7 @@ function injectUserMenu(username) {
         <div class="user-menu__dropdown">
             <a href="/register.html">注册账号</a>
             <a href="/change-password.html">修改密码</a>
-            <a href="/security.html">账号安全</a>
+            ${isAdmin ? '<a href="/security.html">账号安全</a>' : ''}
             <button type="button" data-logout>退出登录</button>
         </div>
     `;

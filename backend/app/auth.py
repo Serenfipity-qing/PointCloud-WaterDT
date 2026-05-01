@@ -57,6 +57,10 @@ def init_auth_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN last_login_ip TEXT")
         if not _has_column(conn, "users", "last_login_user_agent"):
             conn.execute("ALTER TABLE users ADD COLUMN last_login_user_agent TEXT")
+        if not _has_column(conn, "users", "role"):
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        if not _has_column(conn, "users", "is_frozen"):
+            conn.execute("ALTER TABLE users ADD COLUMN is_frozen INTEGER NOT NULL DEFAULT 0")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
@@ -109,8 +113,11 @@ def ensure_default_admin() -> None:
     default_username = os.getenv("WATER_TWIN_USERNAME", "admin")
     default_password = os.getenv("WATER_TWIN_PASSWORD", "admin123")
     if get_user(default_username):
+        with _get_conn() as conn:
+            conn.execute("UPDATE users SET role = 'admin', updated_at = ? WHERE username = ?", (_utc_now().isoformat(), default_username))
+            conn.commit()
         return
-    create_user(default_username, default_password)
+    create_user(default_username, default_password, role="admin")
 
 
 def get_user(username: str) -> sqlite3.Row | None:
@@ -151,13 +158,13 @@ def mask_ip(value: str | None) -> str:
     return ":".join(segments[:2] + ["*", "*"])
 
 
-def create_user(username: str, password: str) -> None:
+def create_user(username: str, password: str, role: str = "user") -> None:
     now = _utc_now().isoformat()
     password_hash = _hash_password(password)
     with _get_conn() as conn:
         conn.execute(
-            "INSERT INTO users (username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (username, password_hash, now, now),
+            "INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (username, password_hash, role, now, now),
         )
         conn.commit()
 
@@ -180,6 +187,17 @@ def remove_user_sessions(username: str, keep_token: Optional[str] = None) -> Non
         else:
             conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
         conn.commit()
+
+
+def is_admin_user(username: str) -> bool:
+    row = get_user(username)
+    return bool(row and str(row["role"] or "user") == "admin")
+
+
+def is_user_frozen(row: sqlite3.Row | None) -> bool:
+    if not row:
+        return False
+    return bool(int(row["is_frozen"] or 0))
 
 
 def is_user_locked(row: sqlite3.Row | None) -> tuple[bool, str | None]:
@@ -262,26 +280,47 @@ def log_auth_event(
         conn.commit()
 
 
-def get_recent_auth_logs(username: str, limit: int = 20) -> list[dict]:
+def _classify_auth_event(event_type: str, success: bool) -> str:
+    if event_type in {"account_locked", "login_blocked_locked", "unlock_failed", "admin_delete_user"}:
+        return "high"
+    if not success or event_type in {"admin_freeze_user", "login_failed"}:
+        return "medium"
+    return "normal"
+
+
+def get_recent_auth_logs(username: str | None = None, limit: int = 20) -> list[dict]:
     with _get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT event_type, success, ip_address, user_agent, detail, created_at
-            FROM auth_logs
-            WHERE username = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            (username, limit),
-        ).fetchall()
+        if username:
+            rows = conn.execute(
+                """
+                SELECT username, event_type, success, ip_address, user_agent, detail, created_at
+                FROM auth_logs
+                WHERE username = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (username, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT username, event_type, success, ip_address, user_agent, detail, created_at
+                FROM auth_logs
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
     return [
         {
+            "username": str(row["username"]),
             "event_type": str(row["event_type"]),
             "success": bool(row["success"]),
             "ip_address": mask_ip(row["ip_address"]),
             "detail": row["detail"] or "",
             "user_agent": row["user_agent"] or "",
             "created_at": row["created_at"],
+            "severity": _classify_auth_event(str(row["event_type"]), bool(row["success"])),
         }
         for row in rows
     ]
@@ -300,6 +339,80 @@ def get_security_overview(username: str) -> dict:
         "last_login_at": row["last_login_at"],
         "last_login_ip": mask_ip(row["last_login_ip"]),
         "recent_logs": get_recent_auth_logs(username),
+    }
+
+
+def list_users() -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT username, role, is_frozen, failed_attempts, locked_until, last_login_at, last_login_ip, created_at
+            FROM users
+            ORDER BY role DESC, username ASC
+            """
+        ).fetchall()
+    items = []
+    for row in rows:
+        locked, locked_until = is_user_locked(row)
+        items.append({
+            "username": str(row["username"]),
+            "role": str(row["role"] or "user"),
+            "is_frozen": bool(int(row["is_frozen"] or 0)),
+            "failed_attempts": int(row["failed_attempts"] or 0),
+            "is_locked": locked,
+            "locked_until": locked_until,
+            "last_login_at": row["last_login_at"],
+            "last_login_ip": mask_ip(row["last_login_ip"]),
+            "created_at": row["created_at"],
+        })
+    return items
+
+
+def freeze_user(username: str, frozen: bool) -> None:
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET is_frozen = ?, updated_at = ? WHERE username = ?",
+            (1 if frozen else 0, _utc_now().isoformat(), username),
+        )
+        conn.commit()
+    if frozen:
+        remove_user_sessions(username)
+
+
+def delete_user(username: str) -> None:
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
+        conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        conn.commit()
+
+
+def count_admin_users() -> int:
+    with _get_conn() as conn:
+        row = conn.execute("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'").fetchone()
+        return int(row["c"] if row else 0)
+
+
+def clear_auth_logs(username: str | None = None) -> None:
+    with _get_conn() as conn:
+        if username:
+            conn.execute("DELETE FROM auth_logs WHERE username = ?", (username,))
+        else:
+            conn.execute("DELETE FROM auth_logs")
+        conn.commit()
+
+
+def get_admin_security_overview() -> dict:
+    users = list_users()
+    recent_logs = get_recent_auth_logs(limit=50)
+    return {
+        "summary": {
+            "total_users": len(users),
+            "admin_count": sum(1 for item in users if item["role"] == "admin"),
+            "frozen_count": sum(1 for item in users if item["is_frozen"]),
+            "abnormal_count": sum(1 for item in recent_logs if item["severity"] != "normal"),
+        },
+        "recent_logs": recent_logs,
+        "users": users,
     }
 
 
@@ -346,5 +459,14 @@ def get_current_user(session_token: Optional[str] = Cookie(default=None, alias=S
             conn.execute("DELETE FROM sessions WHERE token = ?", (session_token,))
             conn.commit()
             raise HTTPException(status_code=401, detail="登录状态已过期")
+        user_row = conn.execute("SELECT username, is_frozen FROM users WHERE username = ?", (row["username"],)).fetchone()
+        if not user_row:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (session_token,))
+            conn.commit()
+            raise HTTPException(status_code=401, detail="用户不存在")
+        if bool(int(user_row["is_frozen"] or 0)):
+            conn.execute("DELETE FROM sessions WHERE token = ?", (session_token,))
+            conn.commit()
+            raise HTTPException(status_code=403, detail="账号已被冻结")
 
         return str(row["username"])
