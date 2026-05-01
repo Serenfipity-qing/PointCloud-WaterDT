@@ -88,6 +88,18 @@
                 <h3>最近 50 条安全事件</h3>
                 <button class="btn btn-outline btn-sm" id="btnClearAllLogs">清空审计日志</button>
             </div>
+            <div class="security-filter-row">
+                <input class="form-input" id="securityLogFilterUser" type="text" placeholder="按用户名筛选">
+                <select class="form-input" id="securityLogFilterEvent">
+                    <option value="">全部事件类型</option>
+                </select>
+                <select class="form-input" id="securityLogFilterSeverity">
+                    <option value="">全部风险等级</option>
+                    <option value="high">高风险</option>
+                    <option value="medium">关注</option>
+                    <option value="normal">正常</option>
+                </select>
+            </div>
             <div id="securityLogs" class="stack-list empty-copy security-scroll-panel">加载中...</div>
         </section>
 

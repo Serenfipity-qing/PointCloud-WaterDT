@@ -63,7 +63,6 @@ function commonSubmit(binding, requestFn) {
 }
 
 function initLoginPage() {
-    initUnlockPanel();
     commonSubmit(
         { formId: 'loginForm', buttonId: 'btnLogin', errorId: 'loginError', buttonText: '登录' },
         async (form) => {
@@ -230,55 +229,6 @@ function validatePasswordStrength(password) {
     if (!isStrong) {
         throw new Error('密码需为 8-64 位，且至少包含字母、数字和特殊字符');
     }
-}
-
-function initUnlockPanel() {
-    const panel = document.getElementById('unlockPanel');
-    const toggleBtn = document.getElementById('btnToggleUnlockPanel');
-    const form = document.getElementById('unlockForm');
-    const btn = document.getElementById('btnUnlockAccount');
-    const errorEl = document.getElementById('unlockError');
-
-    toggleBtn?.addEventListener('click', () => {
-        if (!panel) return;
-        panel.hidden = !panel.hidden;
-    });
-
-    form?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (!form || !btn || !errorEl) return;
-        errorEl.textContent = '';
-        btn.disabled = true;
-        btn.textContent = '处理中...';
-        try {
-            const formData = new FormData(form);
-            const payload = {
-                username: String(formData.get('username') || '').trim(),
-                password: String(formData.get('password') || ''),
-            };
-            const res = await fetch(`${AUTH_API_BASE}/api/auth/unlock`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) {
-                const error = await res.json().catch(() => ({ detail: '解锁失败' }));
-                throw new Error(error.detail || '解锁失败');
-            }
-            const data = await res.json();
-            errorEl.style.color = 'var(--success)';
-            errorEl.textContent = data.message || '账号已解锁';
-            const loginUsername = document.getElementById('username');
-            if (loginUsername) loginUsername.value = payload.username;
-        } catch (err) {
-            errorEl.style.color = 'var(--danger)';
-            errorEl.textContent = err.message || '解锁失败';
-        } finally {
-            btn.disabled = false;
-            btn.textContent = '解锁账号';
-        }
-    });
 }
 
 function renderSecurityNotice() {

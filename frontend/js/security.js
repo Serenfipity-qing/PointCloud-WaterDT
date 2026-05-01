@@ -13,6 +13,11 @@ const resetPasswordModal = document.getElementById('securityResetModal');
 const resetPasswordForm = document.getElementById('adminResetPasswordForm');
 const resetPasswordErrorEl = document.getElementById('adminResetPasswordError');
 const resetTargetEl = document.getElementById('adminResetTarget');
+const logFilterUserEl = document.getElementById('securityLogFilterUser');
+const logFilterEventEl = document.getElementById('securityLogFilterEvent');
+const logFilterSeverityEl = document.getElementById('securityLogFilterSeverity');
+
+let currentSecurityOverview = null;
 
 loadSecurityOverview();
 bindSecurityActions();
@@ -26,6 +31,8 @@ async function loadSecurityOverview() {
             throw new Error('读取安全信息失败');
         }
         const data = await res.json();
+        currentSecurityOverview = data;
+        populateEventFilterOptions(data.recent_logs || []);
         renderOverview(data);
     } catch (err) {
         if (logsEl) logsEl.innerHTML = `<div class="empty-copy">${err.message || '读取失败'}</div>`;
@@ -46,7 +53,7 @@ function renderOverview(data) {
         abnormalCountEl.textContent = String(data.summary?.abnormal_count ?? 0);
     }
     if (logsEl) {
-        const rows = data.recent_logs || [];
+        const rows = filterSecurityLogs(data.recent_logs || []);
         logsEl.innerHTML = rows.length ? rows.map((item) => `
             <div class="security-log security-log--${item.severity || 'normal'}">
                 <div class="security-log__time">${formatDateTime(item.created_at)}</div>
@@ -149,6 +156,11 @@ function bindSecurityActions() {
         await postSecurityAction('/api/auth/admin/logs/clear', {});
     });
 
+    [logFilterUserEl, logFilterEventEl, logFilterSeverityEl].forEach((el) => {
+        el?.addEventListener('input', rerenderSecurityLogs);
+        el?.addEventListener('change', rerenderSecurityLogs);
+    });
+
     document.querySelectorAll('[data-close-reset-modal]').forEach((el) => {
         el.addEventListener('click', closeResetPasswordModal);
     });
@@ -224,6 +236,25 @@ function bindSecurityActions() {
     });
 }
 
+function populateEventFilterOptions(rows) {
+    if (!logFilterEventEl) return;
+    const currentValue = String(logFilterEventEl.value || '');
+    const options = Array.from(new Set(
+        rows
+            .map((item) => String(item.event_type || '').trim())
+            .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+
+    logFilterEventEl.innerHTML = [
+        '<option value="">全部事件类型</option>',
+        ...options.map((eventType) => `<option value="${escapeHtml(eventType)}">${escapeHtml(formatEventType(eventType))}</option>`),
+    ].join('');
+
+    if (options.includes(currentValue)) {
+        logFilterEventEl.value = currentValue;
+    }
+}
+
 async function postSecurityAction(path, payload, autoReload = true) {
     const res = await fetch(`${SECURITY_API_BASE}${path}`, {
         method: 'POST',
@@ -252,4 +283,22 @@ function openResetPasswordModal(username) {
 function closeResetPasswordModal() {
     if (!resetPasswordModal) return;
     resetPasswordModal.hidden = true;
+}
+
+function rerenderSecurityLogs() {
+    if (!currentSecurityOverview) return;
+    renderOverview(currentSecurityOverview);
+}
+
+function filterSecurityLogs(rows) {
+    const usernameKeyword = String(logFilterUserEl?.value || '').trim().toLowerCase();
+    const eventType = String(logFilterEventEl?.value || '').trim();
+    const severity = String(logFilterSeverityEl?.value || '').trim();
+
+    return rows.filter((item) => {
+        const usernameOk = !usernameKeyword || String(item.username || '').toLowerCase().includes(usernameKeyword);
+        const severityOk = !severity || String(item.severity || '') === severity;
+        const eventOk = !eventType || String(item.event_type || '') === eventType;
+        return usernameOk && severityOk && eventOk;
+    });
 }

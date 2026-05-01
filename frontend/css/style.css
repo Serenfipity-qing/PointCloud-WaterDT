@@ -805,6 +805,17 @@ body {
     font-size: 13px;
 }
 
+.login-submit-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.login-submit-btn {
+    width: 100%;
+    min-height: 42px;
+}
+
 .login-links {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -877,6 +888,13 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
+}
+
+.security-filter-row {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 0.9fr;
+    gap: 10px;
+    margin-bottom: 12px;
 }
 
 .security-scroll-panel {
@@ -1922,6 +1940,14 @@ body {
     }
 
     .login-links {
+        grid-template-columns: 1fr;
+    }
+
+    .login-submit-row {
+        grid-template-columns: 1fr;
+    }
+
+    .security-filter-row {
         grid-template-columns: 1fr;
     }
 
