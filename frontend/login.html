@@ -40,8 +40,22 @@
                     <span class="login-link-card__title">修改密码</span>
                     <span class="login-link-card__desc">更新当前账号密码</span>
                 </a>
+                <button class="login-link-card login-link-card--button" id="btnToggleUnlockPanel" type="button">
+                    <span class="login-link-card__title">账号解锁</span>
+                    <span class="login-link-card__desc">账号被锁定时手动解除锁定</span>
+                </button>
             </div>
         </div>
+
+        <section class="unlock-panel" id="unlockPanel" hidden>
+            <div class="sidebar-label">账号解锁</div>
+            <form id="unlockForm" class="login-form login-form--compact">
+                <input class="form-input login-input" name="username" type="text" placeholder="输入用户名" autocomplete="username">
+                <input class="form-input login-input" name="password" type="password" placeholder="输入密码" autocomplete="current-password">
+                <button class="btn btn-outline btn-block" id="btnUnlockAccount" type="submit">解锁账号</button>
+                <div id="unlockError" class="login-error"></div>
+            </form>
+        </section>
     </section>
 </main>
 

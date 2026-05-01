@@ -8,6 +8,7 @@ import re
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from ipaddress import ip_address
 from typing import Optional
 
 from fastapi import Cookie, HTTPException
@@ -17,12 +18,19 @@ SESSION_COOKIE_NAME = "water_twin_session"
 DB_PATH = os.getenv("WATER_TWIN_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "data", "auth.db"))
 DB_PATH = os.path.abspath(DB_PATH)
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
+ACCOUNT_LOCK_THRESHOLD = 5
+ACCOUNT_LOCK_SECONDS = 600
 
 
 def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(str(row[1]) == column for row in rows)
 
 
 def init_auth_db() -> None:
@@ -39,12 +47,36 @@ def init_auth_db() -> None:
             )
             """
         )
+        if not _has_column(conn, "users", "failed_attempts"):
+            conn.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
+        if not _has_column(conn, "users", "locked_until"):
+            conn.execute("ALTER TABLE users ADD COLUMN locked_until TEXT")
+        if not _has_column(conn, "users", "last_login_at"):
+            conn.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
+        if not _has_column(conn, "users", "last_login_ip"):
+            conn.execute("ALTER TABLE users ADD COLUMN last_login_ip TEXT")
+        if not _has_column(conn, "users", "last_login_user_agent"):
+            conn.execute("ALTER TABLE users ADD COLUMN last_login_user_agent TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auth_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                success INTEGER NOT NULL,
+                ip_address TEXT,
+                user_agent TEXT,
+                detail TEXT,
                 created_at TEXT NOT NULL
             )
             """
@@ -105,6 +137,20 @@ def validate_password_strength(password: str) -> str | None:
     return None
 
 
+def mask_ip(value: str | None) -> str:
+    if not value:
+        return "-"
+    try:
+        parsed = ip_address(value)
+    except ValueError:
+        return value
+    if parsed.version == 4:
+        parts = value.split(".")
+        return ".".join(parts[:2] + ["*", "*"])
+    segments = value.split(":")
+    return ":".join(segments[:2] + ["*", "*"])
+
+
 def create_user(username: str, password: str) -> None:
     now = _utc_now().isoformat()
     password_hash = _hash_password(password)
@@ -134,6 +180,127 @@ def remove_user_sessions(username: str, keep_token: Optional[str] = None) -> Non
         else:
             conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
         conn.commit()
+
+
+def is_user_locked(row: sqlite3.Row | None) -> tuple[bool, str | None]:
+    if not row:
+        return False, None
+    locked_until = row["locked_until"] if "locked_until" in row.keys() else None
+    if not locked_until:
+        return False, None
+    try:
+        expires_at = datetime.fromisoformat(str(locked_until))
+    except ValueError:
+        return False, None
+    if expires_at <= _utc_now():
+        unlock_user(str(row["username"]))
+        return False, None
+    return True, expires_at.isoformat()
+
+
+def register_failed_login(username: str) -> tuple[int, str | None]:
+    row = get_user(username)
+    if not row:
+        return 0, None
+    attempts = int(row["failed_attempts"] or 0) + 1
+    locked_until = None
+    if attempts >= ACCOUNT_LOCK_THRESHOLD:
+        locked_until = (_utc_now() + timedelta(seconds=ACCOUNT_LOCK_SECONDS)).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET failed_attempts = ?, locked_until = ?, updated_at = ? WHERE username = ?",
+            (0 if locked_until else attempts, locked_until, _utc_now().isoformat(), username),
+        )
+        conn.commit()
+    return attempts, locked_until
+
+
+def reset_login_failures(username: str, ip: str | None = None, user_agent: str | None = None) -> None:
+    now = _utc_now().isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE users
+            SET failed_attempts = 0,
+                locked_until = NULL,
+                last_login_at = ?,
+                last_login_ip = ?,
+                last_login_user_agent = ?,
+                updated_at = ?
+            WHERE username = ?
+            """,
+            (now, ip, user_agent, now, username),
+        )
+        conn.commit()
+
+
+def unlock_user(username: str) -> None:
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET failed_attempts = 0, locked_until = NULL, updated_at = ? WHERE username = ?",
+            (_utc_now().isoformat(), username),
+        )
+        conn.commit()
+
+
+def log_auth_event(
+    username: str,
+    event_type: str,
+    success: bool,
+    ip: str | None = None,
+    user_agent: str | None = None,
+    detail: str | None = None,
+) -> None:
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO auth_logs (username, event_type, success, ip_address, user_agent, detail, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (username or "anonymous", event_type, 1 if success else 0, ip, user_agent, detail, _utc_now().isoformat()),
+        )
+        conn.commit()
+
+
+def get_recent_auth_logs(username: str, limit: int = 20) -> list[dict]:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT event_type, success, ip_address, user_agent, detail, created_at
+            FROM auth_logs
+            WHERE username = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (username, limit),
+        ).fetchall()
+    return [
+        {
+            "event_type": str(row["event_type"]),
+            "success": bool(row["success"]),
+            "ip_address": mask_ip(row["ip_address"]),
+            "detail": row["detail"] or "",
+            "user_agent": row["user_agent"] or "",
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def get_security_overview(username: str) -> dict:
+    row = get_user(username)
+    if not row:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    locked, locked_until = is_user_locked(row)
+    return {
+        "username": username,
+        "failed_attempts": int(row["failed_attempts"] or 0),
+        "is_locked": locked,
+        "locked_until": locked_until,
+        "last_login_at": row["last_login_at"],
+        "last_login_ip": mask_ip(row["last_login_ip"]),
+        "recent_logs": get_recent_auth_logs(username),
+    }
 
 
 def verify_credentials(username: str, password: str) -> bool:

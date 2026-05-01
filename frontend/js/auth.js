@@ -59,6 +59,7 @@ function commonSubmit(binding, requestFn) {
 }
 
 function initLoginPage() {
+    initUnlockPanel();
     commonSubmit(
         { formId: 'loginForm', buttonId: 'btnLogin', errorId: 'loginError', buttonText: '登录' },
         async (form) => {
@@ -79,6 +80,10 @@ function initLoginPage() {
             if (!res.ok) {
                 const error = await res.json().catch(() => ({ detail: '登录失败' }));
                 throw new Error(error.detail || '登录失败');
+            }
+            const data = await res.json();
+            if (data.security_notice) {
+                sessionStorage.setItem('waterTwinSecurityNotice', data.security_notice);
             }
 
             const next = new URLSearchParams(window.location.search).get('next') || '/index.html';
@@ -172,6 +177,7 @@ function injectUserMenu(username) {
         <div class="user-menu__dropdown">
             <a href="/register.html">注册账号</a>
             <a href="/change-password.html">修改密码</a>
+            <a href="/security.html">账号安全</a>
             <button type="button" data-logout>退出登录</button>
         </div>
     `;
@@ -195,6 +201,7 @@ function injectUserMenu(username) {
     });
 
     document.body.appendChild(menu);
+    renderSecurityNotice();
 }
 
 function escapeHtml(value) {
@@ -219,4 +226,72 @@ function validatePasswordStrength(password) {
     if (!isStrong) {
         throw new Error('密码需为 8-64 位，且至少包含字母、数字和特殊字符');
     }
+}
+
+function initUnlockPanel() {
+    const panel = document.getElementById('unlockPanel');
+    const toggleBtn = document.getElementById('btnToggleUnlockPanel');
+    const form = document.getElementById('unlockForm');
+    const btn = document.getElementById('btnUnlockAccount');
+    const errorEl = document.getElementById('unlockError');
+
+    toggleBtn?.addEventListener('click', () => {
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+    });
+
+    form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!form || !btn || !errorEl) return;
+        errorEl.textContent = '';
+        btn.disabled = true;
+        btn.textContent = '处理中...';
+        try {
+            const formData = new FormData(form);
+            const payload = {
+                username: String(formData.get('username') || '').trim(),
+                password: String(formData.get('password') || ''),
+            };
+            const res = await fetch(`${AUTH_API_BASE}/api/auth/unlock`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                const error = await res.json().catch(() => ({ detail: '解锁失败' }));
+                throw new Error(error.detail || '解锁失败');
+            }
+            const data = await res.json();
+            errorEl.style.color = 'var(--success)';
+            errorEl.textContent = data.message || '账号已解锁';
+            const loginUsername = document.getElementById('username');
+            if (loginUsername) loginUsername.value = payload.username;
+        } catch (err) {
+            errorEl.style.color = 'var(--danger)';
+            errorEl.textContent = err.message || '解锁失败';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '解锁账号';
+        }
+    });
+}
+
+function renderSecurityNotice() {
+    const message = sessionStorage.getItem('waterTwinSecurityNotice');
+    if (!message || document.querySelector('[data-security-notice]')) {
+        return;
+    }
+    sessionStorage.removeItem('waterTwinSecurityNotice');
+    const notice = document.createElement('div');
+    notice.dataset.securityNotice = '1';
+    notice.className = 'user-menu';
+    notice.style.top = '72px';
+    notice.innerHTML = `
+        <div class="sidebar-panel" style="max-width:420px;border-color:rgba(217,144,33,0.28);background:rgba(255,250,240,0.98);">
+            <div class="sidebar-label">异常登录提示</div>
+            <div class="sidebar-text" style="color:#5c4710;">${escapeHtml(message)}</div>
+        </div>
+    `;
+    document.body.appendChild(notice);
 }

@@ -16,10 +16,16 @@ from ..auth import (
     create_session,
     create_user,
     get_current_user,
+    get_security_overview,
     get_user,
+    is_user_locked,
+    log_auth_event,
     remove_session,
     remove_user_sessions,
+    reset_login_failures,
+    register_failed_login,
     update_password,
+    unlock_user,
     validate_password_strength,
     validate_username,
     verify_credentials,
@@ -68,6 +74,11 @@ class RegisterPayload(BaseModel):
 class ChangePasswordPayload(BaseModel):
     current_password: str
     new_password: str
+
+
+class UnlockPayload(BaseModel):
+    username: str
+    password: str
 
 
 class AssistantPayload(BaseModel):
@@ -125,13 +136,36 @@ def _clear_login_failures(key: str) -> None:
 @router.post("/auth/login")
 async def login(payload: LoginPayload, response: Response, request: Request):
     username = payload.username.strip()
+    client_ip = _get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "")
     key = _enforce_login_rate_limit(request, username)
-    if not verify_credentials(payload.username, payload.password):
+    user_row = get_user(username)
+    locked, locked_until = is_user_locked(user_row)
+    if locked:
+        log_auth_event(username, "login_blocked_locked", False, client_ip, user_agent, f"锁定至 {locked_until}")
+        raise HTTPException(423, f"账号已锁定，请在稍后重试或使用解锁功能")
+    if not verify_credentials(username, payload.password):
         _record_login_failure(key)
+        attempts, new_locked_until = register_failed_login(username)
+        if new_locked_until:
+            log_auth_event(username, "account_locked", False, client_ip, user_agent, "登录失败次数过多，账号已锁定")
+            raise HTTPException(423, "登录失败次数过多，账号已锁定 10 分钟")
+        log_auth_event(username, "login_failed", False, client_ip, user_agent, f"连续失败次数 {attempts}")
         raise HTTPException(401, "用户名或密码错误")
     _clear_login_failures(key)
 
+    security_notice = None
+    if user_row:
+        last_ip = str(user_row["last_login_ip"] or "")
+        last_ua = str(user_row["last_login_user_agent"] or "")
+        if last_ip and last_ip != client_ip:
+            security_notice = f"检测到登录 IP 发生变化：上次 {last_ip}，本次 {client_ip}。如非本人操作，请立即修改密码。"
+        elif last_ua and user_agent and last_ua != user_agent:
+            security_notice = "检测到登录设备环境发生变化，如非本人操作，请尽快检查账号安全。"
+
     session_token, ttl_seconds = create_session(username, payload.remember_me)
+    reset_login_failures(username, client_ip, user_agent)
+    log_auth_event(username, "login_success", True, client_ip, user_agent, security_notice or "登录成功")
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_token,
@@ -140,7 +174,7 @@ async def login(payload: LoginPayload, response: Response, request: Request):
         secure=os.getenv("WATER_TWIN_SECURE_COOKIE", "0") == "1",
         max_age=ttl_seconds,
     )
-    return {"ok": True, "username": username}
+    return {"ok": True, "username": username, "security_notice": security_notice}
 
 
 @router.post("/auth/register")
@@ -156,6 +190,7 @@ async def register(payload: RegisterPayload):
         raise HTTPException(400, "用户名已存在")
 
     create_user(username, payload.password)
+    log_auth_event(username, "register", True, detail="账号注册成功")
     return {"ok": True}
 
 
@@ -173,7 +208,24 @@ async def change_password(
 
     update_password(username, payload.new_password)
     remove_user_sessions(username, keep_token=session_token)
+    log_auth_event(username, "change_password", True, detail="密码修改成功，其他会话已失效")
     return {"ok": True}
+
+
+@router.post("/auth/unlock")
+async def unlock_account(payload: UnlockPayload, request: Request):
+    username = payload.username.strip()
+    client_ip = _get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "")
+    key = _enforce_login_rate_limit(request, username)
+    if not verify_credentials(username, payload.password):
+        _record_login_failure(key)
+        log_auth_event(username, "unlock_failed", False, client_ip, user_agent, "解锁时密码校验失败")
+        raise HTTPException(401, "用户名或密码错误，无法解锁账号")
+    _clear_login_failures(key)
+    unlock_user(username)
+    log_auth_event(username, "unlock_success", True, client_ip, user_agent, "账号已手动解锁")
+    return {"ok": True, "message": "账号已解锁，请重新登录"}
 
 
 @router.post("/auth/logout")
@@ -186,6 +238,11 @@ async def logout(response: Response, session_token: str | None = Cookie(default=
 @router.get("/auth/me")
 async def get_me(username: str = Depends(get_current_user)):
     return {"authenticated": True, "username": username}
+
+
+@router.get("/auth/security-overview")
+async def security_overview(username: str = Depends(get_current_user)):
+    return get_security_overview(username)
 
 
 @router.post("/upload")

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水利数字孪生系统 | 账号安全</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="site-body">
+<div class="site-shell">
+    <aside class="site-sidebar">
+        <div>
+            <div class="brand-mark">WT</div>
+            <h1>水利数字孪生系统</h1>
+        </div>
+
+        <nav class="nav-menu">
+            <a class="nav-link" href="index.html">项目总览</a>
+            <a class="nav-link" href="viewer.html">点云分析</a>
+            <a class="nav-link" href="report.html">统计与导出</a>
+            <a class="nav-link" href="inspection.html">巡检提示</a>
+            <a class="nav-link" href="flood.html">防洪预警</a>
+            <a class="nav-link" href="embankment.html">堤坝岸坡排查</a>
+            <a class="nav-link" href="ai.html">AI 助手</a>
+            <a class="nav-link active" href="security.html">账号安全</a>
+        </nav>
+    </aside>
+
+    <main class="site-main">
+        <section class="page-header-card">
+            <div>
+                <div class="eyebrow">Account Security</div>
+                <h2>登录安全与审计记录</h2>
+                <p class="hero-copy">查看当前账号的登录安全状态、最近成功登录信息以及近期登录审计记录。</p>
+            </div>
+        </section>
+
+        <section class="summary-grid">
+            <article class="stat-card">
+                <div class="sidebar-label">账号状态</div>
+                <div class="big-metric" id="securityLockState">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">失败计数</div>
+                <div class="big-metric" id="securityFailedCount">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">上次登录</div>
+                <div class="big-metric" id="securityLastLogin">-</div>
+            </article>
+            <article class="stat-card">
+                <div class="sidebar-label">上次登录 IP</div>
+                <div class="big-metric" id="securityLastIp">-</div>
+            </article>
+        </section>
+
+        <section class="dashboard-grid">
+            <article class="info-card">
+                <div class="section-kicker">近期审计</div>
+                <h3>最近 20 条安全事件</h3>
+                <div id="securityLogs" class="stack-list empty-copy">加载中...</div>
+            </article>
+
+            <article class="info-card">
+                <div class="section-kicker">锁定说明</div>
+                <h3>账号锁定与解锁策略</h3>
+                <ul class="flat-list">
+                    <li>同一账号连续失败达到阈值后会被临时锁定 10 分钟。</li>
+                    <li>可在登录页使用“账号解锁”功能，输入正确用户名和密码手动解锁。</li>
+                    <li>修改密码后，系统会自动使其他会话失效。</li>
+                </ul>
+            </article>
+        </section>
+    </main>
+</div>
+
+<script src="js/auth.js"></script>
+<script src="js/security.js"></script>
+</body>
+</html>
