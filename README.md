@@ -1503,3 +1503,124 @@ WATER_TWIN_DB_PATH
 - 原始标签对比功能依赖点云中存在 `label_id`。
 - PointNet 外部目录不能只剩权重文件，模型结构代码也必须存在。
 
+## 23. 近期运行机制更新
+
+这一轮代码已补上几项和实际部署直接相关的机制：
+
+- 用户隔离与 owner 校验
+  - 后端运行态任务缓存 `_cache[file_id]` 现在会记录 `owner`
+  - `GET /api/files` 只返回当前登录用户自己的任务
+  - `GET /api/pointcloud/{file_id}`、`POST /api/predict/{file_id}`、`GET /api/statistics/{file_id}`、`GET /api/risk-regions/{file_id}`、`POST /api/flood-assessment/{file_id}`、`GET /api/embankment-assessment/{file_id}`、`GET /api/export/{file_id}`、`GET /api/inspection-report/{file_id}`、`POST /api/assistant/ask`、`POST /api/assistant/ask-stream`
+    都会校验任务是否属于当前用户
+  - 这样可以避免用户 A 通过 `file_id` 访问用户 B 的运行态分析结果
+
+- 运行态缓存淘汰与文件清理
+  - 上传原始文件会落到 `backend/data/raw/_runtime_uploads`
+  - 推理产生的标签缓存文件会落到 `backend/data/results/_runtime_cache`
+  - 后端会按 TTL 和最大任务数两层规则淘汰运行态任务
+  - 任务淘汰时会同步清理对应原始上传文件和结果缓存文件，避免磁盘持续堆积
+
+- 模型路径配置化
+  - 不再强依赖写死的 PointNet 目录
+  - 可通过环境变量指定：
+    - `WATER_TWIN_POINTNET_DIR`
+    - `WATER_TWIN_MODEL_CHECKPOINT`
+  - 如果 `models` 目录缺失或 `best_model.pth` 路径错误，后端会给出更明确的报错
+
+- CORS 配置化
+  - 默认允许：
+    - `http://localhost:8000`
+    - `http://127.0.0.1:8000`
+  - 可通过 `WATER_TWIN_CORS_ORIGINS` 自定义，多个地址用英文逗号分隔
+  - 当前开启了 `allow_credentials=True`，便于基于 Cookie 的登录态在前后端联调中生效
+
+- AI 助手模型信息一致性
+  - 流式接口会先发送真实的 `model/provider` 元信息
+  - 前端不再把模型名硬编码为 `gpt-5-nano`
+  - AI 会话缓存中的模型信息也改为记录后端实际返回的值
+
+- CSV 导出行为一致性
+  - CSV 只导出分类统计聚合结果
+  - 当前默认只导出点数大于 0 的语义类别和业务类别
+  - 不再导出逐点明细
+
+## 24. 新增环境变量
+
+PowerShell 示例：
+
+```powershell
+$env:WATER_TWIN_POINTNET_DIR="E:\desktop\pointnet"
+$env:WATER_TWIN_MODEL_CHECKPOINT="E:\desktop\pointnet\log\pointnet_sem_seg\2026-04-05_21-02\checkpoints\best_model.pth"
+$env:WATER_TWIN_TASK_CACHE_MAX_ITEMS="8"
+$env:WATER_TWIN_TASK_CACHE_TTL_SECONDS="14400"
+$env:WATER_TWIN_CORS_ORIGINS="http://localhost:8000,http://127.0.0.1:8000"
+```
+
+说明：
+
+- `WATER_TWIN_POINTNET_DIR`
+  - PointNet 工程根目录，目录内至少应包含 `models/pointnet_sem_seg.py`
+- `WATER_TWIN_MODEL_CHECKPOINT`
+  - 语义分割权重文件绝对路径
+- `WATER_TWIN_TASK_CACHE_MAX_ITEMS`
+  - 后端运行态最多保留多少个任务
+- `WATER_TWIN_TASK_CACHE_TTL_SECONDS`
+  - 任务最长保留秒数
+- `WATER_TWIN_CORS_ORIGINS`
+  - 允许跨域的前端地址列表
+
+## 25. 测试建议
+
+建议按下面顺序验证：
+
+- 1. 安装/更新依赖
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+现在依赖中已包含 `Pillow>=10.0.0`，用于 PDF 图片报告导出。
+
+- 2. 启动服务
+
+```bash
+python run.py
+```
+
+- 3. 验证用户隔离
+  - 浏览器 A 登录用户 A，上传一个点云并完成分割
+  - 浏览器 B 使用无痕窗口登录用户 B
+  - 在两个窗口分别打开 `GET /api/files`
+  - 预期：A 只能看到 A 的任务，B 只能看到 B 的任务
+  - 若你手动拿 A 的 `file_id` 去请求 B 的统计/点云/导出接口，预期应返回无权限或未找到
+
+- 4. 验证缓存淘汰与文件清理
+  - 临时把 `WATER_TWIN_TASK_CACHE_TTL_SECONDS` 调小，例如设成 `300`
+  - 上传并分割一个文件，等待超过 TTL 后再访问其统计接口
+  - 预期：任务失效，运行态缓存被清理
+  - 再把 `WATER_TWIN_TASK_CACHE_MAX_ITEMS` 调成 `2`
+  - 连续上传 3 个不同文件
+  - 预期：最早的任务被淘汰，对应运行态原始文件和结果文件也会被删除
+
+- 5. 验证模型路径配置
+  - 故意把 `WATER_TWIN_MODEL_CHECKPOINT` 指到错误路径
+  - 执行分割
+  - 预期：后端返回明确的模型/权重不存在报错
+  - 改回正确路径后再次分割，预期恢复正常
+
+- 6. 验证 CSV 行为
+  - 完成一次分割后导出 CSV
+  - 预期：
+    - 只包含语义类别/业务类别聚合统计
+    - 只包含点数大于 0 的类别
+    - 不包含逐点明细
+
+- 7. 验证 AI 助手模型信息一致性
+  - 在 `backend/config/ai_settings.json` 修改 `model`
+  - 进入 AI 助手并发起一次流式问答
+  - 预期：聊天气泡中的模型名显示为你实际配置的模型，而不是固定值
+
+- 8. 验证 CORS
+  - 如果你改成前后端分离部署，把前端地址加入 `WATER_TWIN_CORS_ORIGINS`
+  - 用浏览器开发者工具检查跨域请求
+  - 预期：登录态 Cookie 能随请求发送，接口不再被 CORS 拦截

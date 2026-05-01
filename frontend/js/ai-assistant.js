@@ -321,6 +321,8 @@ async function askAssistant(regenerate = false) {
     btnAskAssistant.disabled = true;
     const assistantState = appendStreamingAssistantBubble();
     let streamedText = '';
+    let responseModel = '';
+    let responseProvider = '';
 
     try {
         const res = await fetch(`${AI_API_BASE}/api/assistant/ask-stream`, {
@@ -375,6 +377,12 @@ async function askAssistant(regenerate = false) {
                 if (eventName === 'error') {
                     throw new Error(payload.message || 'AI 流式输出失败');
                 }
+                if (eventName === 'meta') {
+                    responseModel = payload.model || responseModel;
+                    responseProvider = payload.provider || responseProvider;
+                    assistantState.meta.textContent = `模型：${responseModel || '未知'} | 提供方：${responseProvider || '未知'} | 来源：实时生成`;
+                    continue;
+                }
                 if (eventName === 'done') {
                     done = true;
                     break;
@@ -389,14 +397,14 @@ async function askAssistant(regenerate = false) {
 
         writeAssistantCache(cacheKey, {
             answer: streamedText,
-            model: 'gpt-5-nano',
-            provider: 'openai',
+            model: responseModel || 'unknown',
+            provider: responseProvider || 'unknown',
             updatedAt: new Date().toISOString(),
         });
 
         assistantState.title.textContent = '模型回答';
         assistantState.content.innerHTML = renderMarkdownAnswer(streamedText);
-        assistantState.meta.textContent = '模型：gpt-5-nano | 提供方：openai | 来源：实时生成';
+        assistantState.meta.textContent = `模型：${responseModel || '未知'} | 提供方：${responseProvider || '未知'} | 来源：实时生成`;
         appendAnswerActions(assistantState.bubble, {
             question,
             answer: streamedText,
@@ -405,8 +413,8 @@ async function askAssistant(regenerate = false) {
         persistSessionMessage({
             role: 'assistant',
             content: streamedText,
-            model: 'gpt-5-nano',
-            provider: 'openai',
+            model: responseModel || 'unknown',
+            provider: responseProvider || 'unknown',
             fromCache: false,
             question,
             questionType,
@@ -453,12 +461,14 @@ function appendStreamingAssistantBubble() {
 }
 
 function appendAssistantBubble({ answer, model, provider, fromCache, question, questionType, persist = false }) {
+    const safeModel = model || '未知';
+    const safeProvider = provider || '未知';
     const bubble = document.createElement('div');
     bubble.className = 'assistant-bubble assistant';
     bubble.innerHTML = `
         <div class="assistant-answer-title">模型回答</div>
         <div class="assistant-answer-content">${renderMarkdownAnswer(answer || '模型没有返回有效内容')}</div>
-        <div class="assistant-meta">模型：${escapeHtml(model || 'gpt-5-nano')} | 提供方：${escapeHtml(provider || 'openai')} | 来源：${fromCache ? '本地缓存' : '实时生成'}</div>
+        <div class="assistant-meta">模型：${escapeHtml(safeModel)} | 提供方：${escapeHtml(safeProvider)} | 来源：${fromCache ? '本地缓存' : '实时生成'}</div>
     `;
     assistantChat.appendChild(bubble);
     appendAnswerActions(bubble, { question, answer, questionType });

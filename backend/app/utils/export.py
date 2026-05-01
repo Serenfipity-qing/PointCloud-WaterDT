@@ -19,13 +19,15 @@ def export_json(points: np.ndarray, labels: np.ndarray, stats: dict, alerts: lis
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
-def export_csv(stats: dict) -> str:
+def export_csv(stats: dict, non_zero_only: bool = False) -> str:
     """Export aggregated semantic and business statistics."""
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["统计维度", "类别名称", "点数", "占比(%)"])
 
     for item in stats.get("class_stats", []):
+        if non_zero_only and not int(item.get("count", 0)):
+            continue
         writer.writerow([
             "语义类别",
             item.get("name_cn", item.get("name", "")),
@@ -34,6 +36,8 @@ def export_csv(stats: dict) -> str:
         ])
 
     for item in stats.get("business_stats", []):
+        if non_zero_only and not int(item.get("count", 0)):
+            continue
         writer.writerow([
             "业务类别",
             item.get("name", ""),
@@ -101,19 +105,22 @@ def build_inspection_report_context(task: dict) -> dict:
 
 
 def build_inspection_report_text(context: dict) -> str:
-    lines = []
-    lines.append("自动巡检报告")
-    lines.append(f"生成时间：{context.get('generated_at', '')}")
-    lines.append(f"文件名：{context.get('filename', '')}")
-    lines.append(f"文件ID：{context.get('file_id', '')}")
-    lines.append("")
+    lines = [
+        "自动巡检报告",
+        f"生成时间：{context.get('generated_at', '')}",
+        f"文件名：{context.get('filename', '')}",
+        f"文件ID：{context.get('file_id', '')}",
+        "",
+    ]
     overall = context.get("overall") or {}
-    lines.append(f"总体研判：{overall.get('title', '')}")
-    lines.append(f"总体等级：{overall.get('level_label', '')}")
-    lines.append(f"总体分数：{overall.get('score', '')}")
-    lines.append(f"总体说明：{overall.get('message', '')}")
-    lines.append("")
-    lines.append("风险明细：")
+    lines.extend([
+        f"总体研判：{overall.get('title', '')}",
+        f"总体等级：{overall.get('level_label', '')}",
+        f"总体分数：{overall.get('score', '')}",
+        f"总体说明：{overall.get('message', '')}",
+        "",
+        "风险明细：",
+    ])
     for item in context.get("alerts", []):
         lines.append(
             f"- {item.get('title', '')} | {item.get('level_label', item.get('level', ''))} | "
@@ -210,7 +217,7 @@ def _load_font(size: int, bold: bool = False):
 
 def _build_minimal_docx(text: str) -> bytes:
     from xml.sax.saxutils import escape
-    from zipfile import ZipFile, ZIP_DEFLATED
+    from zipfile import ZIP_DEFLATED, ZipFile
 
     content_lines = []
     for line in text.splitlines():

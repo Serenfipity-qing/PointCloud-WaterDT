@@ -1,21 +1,20 @@
 """
-统一模型推理接口。
-支持 PointNet，后续可替换为其他模型，不影响上层系统。
+Unified segmentation model interface.
+Currently supports PointNet and can be replaced without changing upper-layer APIs.
 """
 import abc
-import sys
 import os
+import sys
+
 import numpy as np
 import torch
 
-from ..config import (
-    MODEL_CHECKPOINT, NUM_CLASSES, NUM_POINT, BLOCK_SIZE, BATCH_SIZE, POINTNET_DIR
-)
+from ..config import BATCH_SIZE, BLOCK_SIZE, MODEL_CHECKPOINT, NUM_CLASSES, NUM_POINT, POINTNET_DIR
 from .pointcloud_loader import preprocess_for_inference
 
 
 class BaseSegModel(abc.ABC):
-    """语义分割模型的统一抽象接口"""
+    """Abstract interface for semantic segmentation models."""
 
     @abc.abstractmethod
     def load(self, checkpoint_path: str):
@@ -24,26 +23,36 @@ class BaseSegModel(abc.ABC):
     @abc.abstractmethod
     def predict(self, points: np.ndarray) -> np.ndarray:
         """
-        输入: (N, >=6) 点云 (xyz + rgb [+ label])
-        输出: (N,) 每个点的预测类别 id
+        Input: (N, >=6) point cloud (xyz + rgb [+ label])
+        Output: (N,) predicted class id for each point
         """
-        ...
 
 
 class PointNetSegModel(BaseSegModel):
-    """基于你训练好的 PointNet 的语义分割模型"""
+    """PointNet semantic segmentation model wrapper."""
 
     def __init__(self):
         self.model = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def load(self, checkpoint_path: str = MODEL_CHECKPOINT):
-        # 将 pointnet/models 加入 sys.path 以便 import
         models_dir = os.path.join(POINTNET_DIR, "models")
+        if not os.path.isdir(models_dir):
+            raise FileNotFoundError(
+                f"PointNet models directory not found: {models_dir}. "
+                "Set WATER_TWIN_POINTNET_DIR or update backend/app/config.py."
+            )
+        if not os.path.isfile(checkpoint_path):
+            raise FileNotFoundError(
+                f"Model checkpoint not found: {checkpoint_path}. "
+                "Set WATER_TWIN_MODEL_CHECKPOINT or update backend/app/config.py."
+            )
+
         if models_dir not in sys.path:
             sys.path.insert(0, models_dir)
 
         from pointnet_sem_seg import get_model  # type: ignore
+
         self.model = get_model(NUM_CLASSES).to(self.device)
         checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(checkpoint["model_state_dict"])
@@ -52,12 +61,15 @@ class PointNetSegModel(BaseSegModel):
 
     def predict(self, points: np.ndarray) -> np.ndarray:
         if self.model is None:
-            raise RuntimeError("模型未加载，请先调用 load()")
+            raise RuntimeError("Model is not loaded. Call load() first.")
 
         num_points = points.shape[0]
         stride = BLOCK_SIZE / 2
         batched_data, point_indices = preprocess_for_inference(
-            points, block_size=BLOCK_SIZE, num_point=NUM_POINT, stride=stride
+            points,
+            block_size=BLOCK_SIZE,
+            num_point=NUM_POINT,
+            stride=stride,
         )
 
         vote_pool = np.zeros((num_points, NUM_CLASSES), dtype=np.float32)
@@ -79,7 +91,6 @@ class PointNetSegModel(BaseSegModel):
         return vote_pool.argmax(axis=1)
 
 
-# 全局模型实例（单例）
 _model_instance: BaseSegModel | None = None
 
 

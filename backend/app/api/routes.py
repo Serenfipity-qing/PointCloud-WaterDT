@@ -1,10 +1,13 @@
 """Point cloud and auth API routes."""
+from __future__ import annotations
+
 import io
 import json
 import os
 import time
 import uuid
 from collections import defaultdict
+from typing import Any
 
 import numpy as np
 from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Request, Response, UploadFile
@@ -12,28 +15,26 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..auth import (
+    SESSION_COOKIE_NAME,
     clear_auth_logs,
     count_admin_users,
-    SESSION_COOKIE_NAME,
     create_session,
     create_user,
     delete_user,
     freeze_user,
     get_admin_security_overview,
     get_current_user,
-    get_security_overview,
     get_user,
     is_admin_user,
     is_user_frozen,
     is_user_locked,
-    list_users,
     log_auth_event,
+    register_failed_login,
     remove_session,
     remove_user_sessions,
     reset_login_failures,
-    register_failed_login,
-    update_password,
     unlock_user,
+    update_password,
     validate_password_strength,
     validate_username,
     verify_credentials,
@@ -43,13 +44,21 @@ from ..config import (
     CLASS_COLORS,
     CLASS_NAMES,
     CLASS_NAMES_CN,
-    RAW_DIR,
-    RESULTS_DIR,
+    load_ai_settings,
+    RAW_UPLOAD_DIR,
+    RESULT_CACHE_DIR,
+    TASK_CACHE_MAX_ITEMS,
+    TASK_CACHE_TTL_SECONDS,
 )
 from ..core.model_interface import get_model_instance
 from ..core.pointcloud_loader import get_pointcloud_info, load_pth_pointcloud
 from ..services.ai_assistant import ask_analysis_assistant, stream_analysis_assistant
-from ..services.analysis import assess_embankment_risk, assess_flood_risk_with_inputs, compute_statistics, generate_inspection_report
+from ..services.analysis import (
+    assess_embankment_risk,
+    assess_flood_risk_with_inputs,
+    compute_statistics,
+    generate_inspection_report,
+)
 from ..utils.export import (
     build_inspection_report_context,
     build_inspection_report_docx,
@@ -61,7 +70,7 @@ from ..utils.export import (
 
 router = APIRouter(prefix="/api", tags=["pointcloud"])
 
-_cache: dict[str, dict] = {}
+_cache: dict[str, dict[str, Any]] = {}
 _login_attempts: dict[str, dict[str, float | int]] = defaultdict(dict)
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_BLOCK_SECONDS = 300
@@ -127,6 +136,84 @@ class FloodAssessmentPayload(BaseModel):
     drainage_status: str = "normal"
 
 
+def _utc_ts() -> float:
+    return time.time()
+
+
+def _touch_cached_task(cached: dict[str, Any]) -> None:
+    cached["last_accessed_at"] = _utc_ts()
+
+
+def _cleanup_task_files(cached: dict[str, Any]) -> None:
+    for path_key in ("path", "result_path"):
+        path = cached.get(path_key)
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def _evict_task(file_id: str) -> None:
+    cached = _cache.pop(file_id, None)
+    if not cached:
+        return
+    _cleanup_task_files(cached)
+
+
+def _purge_expired_cache() -> None:
+    if not _cache:
+        return
+    now = _utc_ts()
+    expired_ids = [
+        file_id
+        for file_id, cached in list(_cache.items())
+        if now - float(cached.get("last_accessed_at", cached.get("created_at", now))) > TASK_CACHE_TTL_SECONDS
+    ]
+    for file_id in expired_ids:
+        _evict_task(file_id)
+
+
+def _enforce_cache_limits() -> None:
+    _purge_expired_cache()
+    if len(_cache) < TASK_CACHE_MAX_ITEMS:
+        return
+
+    ordered = sorted(
+        _cache.items(),
+        key=lambda item: float(item[1].get("last_accessed_at", item[1].get("created_at", 0.0))),
+    )
+    while len(_cache) >= TASK_CACHE_MAX_ITEMS and ordered:
+        file_id, _ = ordered.pop(0)
+        _evict_task(file_id)
+
+
+def _get_cached_task(file_id: str, username: str, *, require_labels: bool = False, require_stats: bool = False) -> dict[str, Any]:
+    _purge_expired_cache()
+    cached = _cache.get(file_id)
+    if not cached:
+        raise HTTPException(404, "文件不存在或缓存已过期")
+    if cached.get("owner") != username:
+        raise HTTPException(403, "无权访问该任务")
+    if require_labels and "labels" not in cached:
+        raise HTTPException(404, "当前文件暂无分割结果")
+    if require_stats and "stats" not in cached:
+        raise HTTPException(404, "当前文件暂无统计结果")
+    _touch_cached_task(cached)
+    return cached
+
+
+def _ensure_analysis_payload(cached: dict[str, Any]) -> None:
+    if "labels" not in cached:
+        raise HTTPException(404, "当前文件暂无分割结果")
+    if "stats" not in cached:
+        cached["stats"] = compute_statistics(cached["labels"])
+    if "inspection" not in cached:
+        cached["inspection"] = generate_inspection_report(cached["labels"])
+    if "alerts" not in cached:
+        cached["alerts"] = cached["inspection"].get("alerts", [])
+
+
 def _get_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for", "")
     if forwarded_for:
@@ -135,7 +222,7 @@ def _get_client_ip(request: Request) -> str:
 
 
 def _enforce_login_rate_limit(request: Request, username: str) -> str:
-    now = time.time()
+    now = _utc_ts()
     key = f"{_get_client_ip(request)}:{username or 'anonymous'}"
     state = _login_attempts.get(key) or {}
     blocked_until = float(state.get("blocked_until", 0))
@@ -151,7 +238,7 @@ def _enforce_login_rate_limit(request: Request, username: str) -> str:
 
 
 def _record_login_failure(key: str) -> None:
-    now = time.time()
+    now = _utc_ts()
     state = _login_attempts.get(key) or {"count": 0, "window_started": now, "blocked_until": 0}
     if now - float(state.get("window_started", now)) > LOGIN_WINDOW_SECONDS:
         state = {"count": 0, "window_started": now, "blocked_until": 0}
@@ -184,7 +271,7 @@ async def login(payload: LoginPayload, response: Response, request: Request):
     locked, locked_until = is_user_locked(user_row)
     if locked:
         log_auth_event(username, "login_blocked_locked", False, client_ip, user_agent, f"锁定至 {locked_until}")
-        raise HTTPException(423, f"账号已锁定，请在稍后重试或使用解锁功能")
+        raise HTTPException(423, "账号已锁定，请在稍后重试")
     if not verify_credentials(username, payload.password):
         _record_login_failure(key)
         attempts, new_locked_until = register_failed_login(username)
@@ -375,12 +462,13 @@ async def admin_clear_logs(payload: AdminClearLogsPayload, admin_username: str =
 @router.post("/upload")
 async def upload_pointcloud(file: UploadFile = File(...), username: str = Depends(get_current_user)):
     """Upload a .pth or .npy point cloud file."""
-    ext = os.path.splitext(file.filename)[1].lower()
+    ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".pth", ".npy"):
         raise HTTPException(400, "仅支持 .pth 或 .npy 格式")
 
+    _enforce_cache_limits()
     file_id = uuid.uuid4().hex[:12]
-    save_path = os.path.join(RAW_DIR, f"{file_id}{ext}")
+    save_path = os.path.join(RAW_UPLOAD_DIR, f"{file_id}{ext}")
     content = await file.read()
     with open(save_path, "wb") as f:
         f.write(content)
@@ -388,24 +476,40 @@ async def upload_pointcloud(file: UploadFile = File(...), username: str = Depend
     try:
         data = load_pth_pointcloud(save_path)
     except Exception as exc:
-        os.remove(save_path)
-        raise HTTPException(400, f"文件解析失败: {exc}")
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        raise HTTPException(400, f"文件解析失败: {exc}") from exc
 
+    now = _utc_ts()
     info = get_pointcloud_info(data)
-    _cache[file_id] = {"data": data, "path": save_path, "filename": file.filename}
+    _cache[file_id] = {
+        "owner": username,
+        "filename": file.filename,
+        "path": save_path,
+        "data": data,
+        "created_at": now,
+        "last_accessed_at": now,
+    }
     return {"file_id": file_id, "filename": file.filename, "info": info}
 
 
 @router.get("/files")
 async def list_files(username: str = Depends(get_current_user)):
+    _purge_expired_cache()
     items = []
-    for fid, cached in _cache.items():
+    for fid, cached in list(_cache.items()):
+        if cached.get("owner") != username:
+            continue
+        _touch_cached_task(cached)
         items.append({
             "file_id": fid,
             "filename": cached["filename"],
             "num_points": cached["data"].shape[0],
             "has_result": "labels" in cached,
+            "created_at": cached.get("created_at"),
+            "last_accessed_at": cached.get("last_accessed_at"),
         })
+    items.sort(key=lambda item: float(item.get("last_accessed_at") or 0.0), reverse=True)
     return {"files": items}
 
 
@@ -417,10 +521,7 @@ async def get_pointcloud(
     source: str = "pred",
     username: str = Depends(get_current_user),
 ):
-    if file_id not in _cache:
-        raise HTTPException(404, "文件不存在")
-
-    cached = _cache[file_id]
+    cached = _get_cached_task(file_id, username)
     data = cached["data"]
     pred_labels = cached.get("labels")
     raw_labels = data[:, 6].astype(int) if data.shape[1] >= 7 else None
@@ -470,19 +571,16 @@ async def get_pointcloud(
 
 @router.post("/predict/{file_id}")
 async def run_prediction(file_id: str, username: str = Depends(get_current_user)):
-    if file_id not in _cache:
-        raise HTTPException(404, "文件不存在")
-
-    cached = _cache[file_id]
+    cached = _get_cached_task(file_id, username)
     data = cached["data"]
 
     try:
         model = get_model_instance()
-        t0 = time.time()
+        t0 = _utc_ts()
         labels = model.predict(data)
-        elapsed = round(time.time() - t0, 2)
+        elapsed = round(_utc_ts() - t0, 2)
     except Exception as exc:
-        raise HTTPException(500, f"推理失败: {exc}")
+        raise HTTPException(500, f"推理失败: {exc}") from exc
 
     stats = compute_statistics(labels)
     inspection = generate_inspection_report(labels)
@@ -493,8 +591,15 @@ async def run_prediction(file_id: str, username: str = Depends(get_current_user)
     cached["alerts"] = alerts
     cached["inspection"] = inspection
 
-    result_path = os.path.join(RESULTS_DIR, f"{file_id}_result.npy")
+    if cached.get("result_path") and os.path.exists(cached["result_path"]):
+        try:
+            os.remove(cached["result_path"])
+        except OSError:
+            pass
+
+    result_path = os.path.join(RESULT_CACHE_DIR, f"{file_id}_result.npy")
     np.save(result_path, labels)
+    cached["result_path"] = result_path
 
     return {
         "file_id": file_id,
@@ -507,14 +612,8 @@ async def run_prediction(file_id: str, username: str = Depends(get_current_user)
 
 @router.get("/statistics/{file_id}")
 async def get_statistics(file_id: str, username: str = Depends(get_current_user)):
-    if file_id not in _cache or "stats" not in _cache[file_id]:
-        raise HTTPException(404, "无分析结果")
-
-    cached = _cache[file_id]
-    if "inspection" not in cached and "labels" in cached:
-        cached["inspection"] = generate_inspection_report(cached["labels"])
-        cached["alerts"] = cached["inspection"]["alerts"]
-
+    cached = _get_cached_task(file_id, username, require_stats=True)
+    _ensure_analysis_payload(cached)
     return {
         "statistics": cached["stats"],
         "alerts": cached["alerts"],
@@ -524,14 +623,8 @@ async def get_statistics(file_id: str, username: str = Depends(get_current_user)
 
 @router.get("/risk-regions/{file_id}")
 async def get_risk_regions(file_id: str, username: str = Depends(get_current_user)):
-    if file_id not in _cache or "labels" not in _cache[file_id]:
-        raise HTTPException(404, "无分析结果")
-
-    cached = _cache[file_id]
-    if "inspection" not in cached:
-        cached["inspection"] = generate_inspection_report(cached["labels"])
-        cached["alerts"] = cached["inspection"]["alerts"]
-
+    cached = _get_cached_task(file_id, username, require_labels=True)
+    _ensure_analysis_payload(cached)
     return {
         "file_id": file_id,
         "regions": _build_risk_regions(
@@ -544,14 +637,8 @@ async def get_risk_regions(file_id: str, username: str = Depends(get_current_use
 
 @router.post("/flood-assessment/{file_id}")
 async def assess_flood(file_id: str, payload: FloodAssessmentPayload, username: str = Depends(get_current_user)):
-    if file_id not in _cache or "labels" not in _cache[file_id]:
-        raise HTTPException(404, "当前文件暂无可用分析结果")
-
-    cached = _cache[file_id]
-    if "inspection" not in cached:
-        cached["inspection"] = generate_inspection_report(cached["labels"])
-        cached["alerts"] = cached["inspection"]["alerts"]
-
+    cached = _get_cached_task(file_id, username, require_labels=True)
+    _ensure_analysis_payload(cached)
     result = assess_flood_risk_with_inputs(
         cached["inspection"]["metrics"],
         water_level=payload.water_level,
@@ -560,43 +647,22 @@ async def assess_flood(file_id: str, payload: FloodAssessmentPayload, username: 
         forecast_rainfall=payload.forecast_rainfall,
         drainage_status=payload.drainage_status,
     )
-    return {
-        "file_id": file_id,
-        "assessment": result,
-    }
+    return {"file_id": file_id, "assessment": result}
 
 
 @router.get("/embankment-assessment/{file_id}")
 async def assess_embankment(file_id: str, username: str = Depends(get_current_user)):
-    if file_id not in _cache or "labels" not in _cache[file_id]:
-        raise HTTPException(404, "当前文件暂无可用分析结果")
-
-    cached = _cache[file_id]
-    if "inspection" not in cached:
-        cached["inspection"] = generate_inspection_report(cached["labels"])
-        cached["alerts"] = cached["inspection"]["alerts"]
-
+    cached = _get_cached_task(file_id, username, require_labels=True)
+    _ensure_analysis_payload(cached)
     result = assess_embankment_risk(cached["inspection"]["metrics"])
-    return {
-        "file_id": file_id,
-        "assessment": result,
-    }
+    return {"file_id": file_id, "assessment": result}
 
 
 @router.post("/assistant/ask")
 async def ask_assistant(payload: AssistantPayload, username: str = Depends(get_current_user)):
-    file_id = payload.file_id
-    if file_id not in _cache or "labels" not in _cache[file_id]:
-        raise HTTPException(404, "当前文件暂无可用分析结果")
-
-    cached = _cache[file_id]
-    if "inspection" not in cached:
-        cached["inspection"] = generate_inspection_report(cached["labels"])
-        cached["alerts"] = cached["inspection"]["alerts"]
-    if "stats" not in cached:
-        cached["stats"] = compute_statistics(cached["labels"])
-
-    context = _build_assistant_context(file_id=file_id, cached=cached)
+    cached = _get_cached_task(payload.file_id, username, require_labels=True)
+    _ensure_analysis_payload(cached)
+    context = _build_assistant_context(file_id=payload.file_id, cached=cached)
 
     try:
         result = ask_analysis_assistant(
@@ -609,29 +675,23 @@ async def ask_assistant(payload: AssistantPayload, username: str = Depends(get_c
     except RuntimeError as exc:
         raise HTTPException(502, str(exc)) from exc
 
-    return {
-        "ok": True,
-        **result,
-    }
+    return {"ok": True, **result}
 
 
 @router.post("/assistant/ask-stream")
 async def ask_assistant_stream(payload: AssistantPayload, username: str = Depends(get_current_user)):
-    file_id = payload.file_id
-    if file_id not in _cache or "labels" not in _cache[file_id]:
-        raise HTTPException(404, "当前文件暂无可用分析结果")
-
-    cached = _cache[file_id]
-    if "inspection" not in cached:
-        cached["inspection"] = generate_inspection_report(cached["labels"])
-        cached["alerts"] = cached["inspection"]["alerts"]
-    if "stats" not in cached:
-        cached["stats"] = compute_statistics(cached["labels"])
-
-    context = _build_assistant_context(file_id=file_id, cached=cached)
+    cached = _get_cached_task(payload.file_id, username, require_labels=True)
+    _ensure_analysis_payload(cached)
+    context = _build_assistant_context(file_id=payload.file_id, cached=cached)
+    ai_settings = load_ai_settings()
 
     def event_stream():
         try:
+            meta = {
+                "model": ai_settings.get("model", ""),
+                "provider": ai_settings.get("provider", ""),
+            }
+            yield f"event: meta\ndata: {json.dumps(meta, ensure_ascii=False)}\n\n"
             for chunk in stream_analysis_assistant(
                 question=payload.question,
                 question_type=payload.question_type,
@@ -649,16 +709,14 @@ async def ask_assistant_stream(payload: AssistantPayload, username: str = Depend
 
 @router.get("/export/{file_id}")
 async def export_result(file_id: str, format: str = "json", username: str = Depends(get_current_user)):
-    if file_id not in _cache or "labels" not in _cache[file_id]:
-        raise HTTPException(404, "无分析结果")
-
-    cached = _cache[file_id]
+    cached = _get_cached_task(file_id, username, require_labels=True)
+    _ensure_analysis_payload(cached)
     data, labels = cached["data"], cached["labels"]
     stats, alerts = cached["stats"], cached["alerts"]
     inspection = cached.get("inspection")
 
     if format == "csv":
-        content = export_csv(stats)
+        content = export_csv(stats, non_zero_only=True)
         return StreamingResponse(
             io.BytesIO(content.encode("utf-8-sig")),
             media_type="text/csv",
@@ -675,13 +733,8 @@ async def export_result(file_id: str, format: str = "json", username: str = Depe
 
 @router.get("/inspection-report/{file_id}")
 async def export_inspection_report_api(file_id: str, format: str = "pdf", username: str = Depends(get_current_user)):
-    if file_id not in _cache or "labels" not in _cache[file_id]:
-        raise HTTPException(404, "无分析结果")
-
-    cached = _cache[file_id]
-    if "inspection" not in cached:
-        cached["inspection"] = generate_inspection_report(cached["labels"])
-        cached["alerts"] = cached["inspection"]["alerts"]
+    cached = _get_cached_task(file_id, username, require_labels=True)
+    _ensure_analysis_payload(cached)
 
     task = {
         "fileId": file_id,
@@ -756,22 +809,14 @@ def _build_business_color_map() -> dict[int, list[int]]:
     return mapping
 
 
-def _build_assistant_context(*, file_id: str, cached: dict) -> dict:
+def _build_assistant_context(*, file_id: str, cached: dict[str, Any]) -> dict:
     inspection = cached.get("inspection", {}) or {}
     alerts = inspection.get("alerts", []) or []
-    regions = _build_risk_regions(
-        cached["data"][:, :3],
-        cached["labels"],
-        alerts,
-    )
+    regions = _build_risk_regions(cached["data"][:, :3], cached["labels"], alerts)
     assistant_regions = _filter_regions_for_assistant(regions)
     region_map = {region["code"]: region for region in regions}
     top_alerts = [_build_assistant_alert_summary(alert, region_map) for alert in alerts[:3]]
-    class_stats = sorted(
-        cached.get("stats", {}).get("class_stats", []),
-        key=lambda item: item.get("ratio", 0),
-        reverse=True,
-    )
+    class_stats = sorted(cached.get("stats", {}).get("class_stats", []), key=lambda item: item.get("ratio", 0), reverse=True)
     business_stats = sorted(
         cached.get("stats", {}).get("business_stats", []),
         key=lambda item: item.get("ratio", 0),
@@ -821,7 +866,8 @@ def _build_assistant_alert_summary(alert: dict, region_map: dict[str, dict]) -> 
 
 def _filter_regions_for_assistant(regions: list[dict]) -> list[dict]:
     strong_regions = [
-        region for region in regions
+        region
+        for region in regions
         if (region.get("score", 0) or 0) > 0
         or str(region.get("reason", "")).strip()
         or (region.get("spatial_score", 0) or 0) > 0
@@ -1107,7 +1153,8 @@ def _dedupe_regions_by_family(regions: list[dict]) -> list[dict]:
 
         if len(items) > 1:
             extras = [
-                item for item in items[1:]
+                item
+                for item in items[1:]
                 if item.get("combined_score", 0) >= primary.get("combined_score", 0) * 0.72
                 and item["point_count"] >= max(int(primary["point_count"] * 0.25), 120)
             ]
