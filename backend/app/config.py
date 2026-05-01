@@ -33,7 +33,7 @@ CORS_ORIGINS = [
 ]
 
 # Model settings
-POINTNET_DIR = _get_env_path("WATER_TWIN_POINTNET_DIR", os.path.join(PROJECT_ROOT, "pointnet"))
+POINTNET_DIR = _get_env_path("WATER_TWIN_POINTNET_DIR", r"E:\desktop\graduate_project\pointnet")
 MODEL_CHECKPOINT = _get_env_path(
     "WATER_TWIN_MODEL_CHECKPOINT",
     os.path.join(
