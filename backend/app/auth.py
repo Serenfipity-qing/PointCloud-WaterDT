@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from fastapi import Cookie, HTTPException
 SESSION_COOKIE_NAME = "water_twin_session"
 DB_PATH = os.getenv("WATER_TWIN_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "data", "auth.db"))
 DB_PATH = os.path.abspath(DB_PATH)
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -85,6 +87,24 @@ def get_user(username: str) -> sqlite3.Row | None:
         return row
 
 
+def validate_username(username: str) -> str | None:
+    if not USERNAME_PATTERN.fullmatch(username or ""):
+        return "用户名需为 3-32 位，可包含字母、数字、下划线、点和短横线"
+    return None
+
+
+def validate_password_strength(password: str) -> str | None:
+    if not password or len(password) < 8 or len(password) > 64:
+        return "密码需为 8-64 位"
+    if not re.search(r"[A-Za-z]", password):
+        return "密码至少包含一个字母"
+    if not re.search(r"\d", password):
+        return "密码至少包含一个数字"
+    if not re.search(r"[^A-Za-z0-9]", password):
+        return "密码至少包含一个特殊字符"
+    return None
+
+
 def create_user(username: str, password: str) -> None:
     now = _utc_now().isoformat()
     password_hash = _hash_password(password)
@@ -104,6 +124,15 @@ def update_password(username: str, new_password: str) -> None:
             "UPDATE users SET password_hash = ?, updated_at = ? WHERE username = ?",
             (password_hash, now, username),
         )
+        conn.commit()
+
+
+def remove_user_sessions(username: str, keep_token: Optional[str] = None) -> None:
+    with _get_conn() as conn:
+        if keep_token:
+            conn.execute("DELETE FROM sessions WHERE username = ? AND token != ?", (username, keep_token))
+        else:
+            conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
         conn.commit()
 
 

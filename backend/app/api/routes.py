@@ -4,9 +4,10 @@ import json
 import os
 import time
 import uuid
+from collections import defaultdict
 
 import numpy as np
-from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -17,7 +18,10 @@ from ..auth import (
     get_current_user,
     get_user,
     remove_session,
+    remove_user_sessions,
     update_password,
+    validate_password_strength,
+    validate_username,
     verify_credentials,
 )
 from ..config import (
@@ -44,6 +48,10 @@ from ..utils.export import (
 router = APIRouter(prefix="/api", tags=["pointcloud"])
 
 _cache: dict[str, dict] = {}
+_login_attempts: dict[str, dict[str, float | int]] = defaultdict(dict)
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_BLOCK_SECONDS = 300
+LOGIN_WINDOW_SECONDS = 300
 
 
 class LoginPayload(BaseModel):
@@ -76,42 +84,95 @@ class FloodAssessmentPayload(BaseModel):
     drainage_status: str = "normal"
 
 
-@router.post("/auth/login")
-async def login(payload: LoginPayload, response: Response):
-    if not verify_credentials(payload.username, payload.password):
-        raise HTTPException(401, "用户名或密码错误")
+def _get_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
-    session_token, ttl_seconds = create_session(payload.username, payload.remember_me)
+
+def _enforce_login_rate_limit(request: Request, username: str) -> str:
+    now = time.time()
+    key = f"{_get_client_ip(request)}:{username or 'anonymous'}"
+    state = _login_attempts.get(key) or {}
+    blocked_until = float(state.get("blocked_until", 0))
+    if blocked_until > now:
+        raise HTTPException(429, f"登录尝试过于频繁，请在 {int(blocked_until - now)} 秒后重试")
+    window_started = float(state.get("window_started", now))
+    if now - window_started > LOGIN_WINDOW_SECONDS:
+        _login_attempts[key] = {"count": 0, "window_started": now, "blocked_until": 0}
+        return key
+    if not state:
+        _login_attempts[key] = {"count": 0, "window_started": now, "blocked_until": 0}
+    return key
+
+
+def _record_login_failure(key: str) -> None:
+    now = time.time()
+    state = _login_attempts.get(key) or {"count": 0, "window_started": now, "blocked_until": 0}
+    if now - float(state.get("window_started", now)) > LOGIN_WINDOW_SECONDS:
+        state = {"count": 0, "window_started": now, "blocked_until": 0}
+    state["count"] = int(state.get("count", 0)) + 1
+    if int(state["count"]) >= LOGIN_MAX_ATTEMPTS:
+        state["blocked_until"] = now + LOGIN_BLOCK_SECONDS
+    _login_attempts[key] = state
+
+
+def _clear_login_failures(key: str) -> None:
+    _login_attempts.pop(key, None)
+
+
+@router.post("/auth/login")
+async def login(payload: LoginPayload, response: Response, request: Request):
+    username = payload.username.strip()
+    key = _enforce_login_rate_limit(request, username)
+    if not verify_credentials(payload.username, payload.password):
+        _record_login_failure(key)
+        raise HTTPException(401, "用户名或密码错误")
+    _clear_login_failures(key)
+
+    session_token, ttl_seconds = create_session(username, payload.remember_me)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_token,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite="strict",
+        secure=os.getenv("WATER_TWIN_SECURE_COOKIE", "0") == "1",
         max_age=ttl_seconds,
     )
-    return {"ok": True, "username": payload.username}
+    return {"ok": True, "username": username}
 
 
 @router.post("/auth/register")
 async def register(payload: RegisterPayload):
-    if get_user(payload.username):
+    username = payload.username.strip()
+    username_error = validate_username(username)
+    if username_error:
+        raise HTTPException(400, username_error)
+    password_error = validate_password_strength(payload.password)
+    if password_error:
+        raise HTTPException(400, password_error)
+    if get_user(username):
         raise HTTPException(400, "用户名已存在")
-    if len(payload.username.strip()) < 3 or len(payload.password) < 6:
-        raise HTTPException(400, "用户名至少 3 位，密码至少 6 位")
 
-    create_user(payload.username.strip(), payload.password)
+    create_user(username, payload.password)
     return {"ok": True}
 
 
 @router.post("/auth/change-password")
-async def change_password(payload: ChangePasswordPayload, username: str = Depends(get_current_user)):
+async def change_password(
+    payload: ChangePasswordPayload,
+    username: str = Depends(get_current_user),
+    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+):
     if not verify_credentials(username, payload.current_password):
         raise HTTPException(401, "当前密码错误")
-    if len(payload.new_password) < 6:
-        raise HTTPException(400, "新密码至少 6 位")
+    password_error = validate_password_strength(payload.new_password)
+    if password_error:
+        raise HTTPException(400, password_error)
 
     update_password(username, payload.new_password)
+    remove_user_sessions(username, keep_token=session_token)
     return {"ok": True}
 
 

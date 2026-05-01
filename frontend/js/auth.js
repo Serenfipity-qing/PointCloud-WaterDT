@@ -92,14 +92,16 @@ function initRegisterPage() {
         { formId: 'registerForm', buttonId: 'btnRegister', errorId: 'registerError', buttonText: '注册' },
         async (form) => {
             const formData = new FormData(form);
+            const username = String(formData.get('username') || '').trim();
             const password = String(formData.get('password') || '');
             const confirmPassword = String(formData.get('confirm_password') || '');
             if (password !== confirmPassword) {
                 throw new Error('两次密码不一致');
             }
+            validateAuthInput(username, password);
 
             const payload = {
-                username: String(formData.get('username') || '').trim(),
+                username,
                 password,
             };
 
@@ -130,6 +132,7 @@ function initChangePasswordPage() {
             if (newPassword !== confirmPassword) {
                 throw new Error('两次新密码不一致');
             }
+            validatePasswordStrength(newPassword);
 
             const payload = {
                 current_password: String(formData.get('current_password') || ''),
@@ -202,4 +205,18 @@ function escapeHtml(value) {
         "'": '&#039;',
         '"': '&quot;',
     }[char]));
+}
+
+function validateAuthInput(username, password) {
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) {
+        throw new Error('用户名需为 3-32 位，可包含字母、数字、下划线、点和短横线');
+    }
+    validatePasswordStrength(password);
+}
+
+function validatePasswordStrength(password) {
+    const isStrong = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$/.test(password);
+    if (!isStrong) {
+        throw new Error('密码需为 8-64 位，且至少包含字母、数字和特殊字符');
+    }
 }

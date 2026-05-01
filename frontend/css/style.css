@@ -805,6 +805,44 @@ body {
     font-size: 13px;
 }
 
+.login-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.login-link-card {
+    display: grid;
+    gap: 6px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(23,108,143,0.14);
+    background: linear-gradient(135deg, rgba(248,251,251,0.95), rgba(238,246,245,0.96));
+    color: #163847;
+    text-decoration: none;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.login-link-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(23,108,143,0.28);
+    box-shadow: var(--soft-shadow);
+    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(233,244,242,0.98));
+}
+
+.login-link-card__title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #163847;
+}
+
+.login-link-card__desc {
+    font-size: 12px;
+    color: var(--text-light);
+    line-height: 1.5;
+}
+
 /* Header */
 .header {
     background: linear-gradient(135deg, #1a73e8, #0d47a1);
@@ -1708,6 +1746,10 @@ body {
 
     .page-header-card__intro .hero-copy {
         white-space: normal;
+    }
+
+    .login-links {
+        grid-template-columns: 1fr;
     }
 
     .hero-card h2,
