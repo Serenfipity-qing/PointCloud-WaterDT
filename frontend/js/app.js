@@ -1283,6 +1283,7 @@ async function generateHazardAtlas() {
     const previousActive = activeRiskRegionCode;
     const viewerKey = currentViewMode === 'compare' ? 'compare' : 'single';
     const atlasItems = [];
+    const viewerPoseSnapshot = captureViewerPoseState();
 
     showLoading('正在生成隐患图册...');
     try {
@@ -1323,6 +1324,7 @@ async function generateHazardAtlas() {
         console.warn('Failed to generate hazard atlas.', err);
         alert('隐患图册导出失败');
     } finally {
+        restoreViewerPoseState(viewerPoseSnapshot);
         if (previousActive) {
             const previousIndex = riskRegions.findIndex((item) => item.code === previousActive);
             if (previousIndex >= 0) {
@@ -1347,6 +1349,39 @@ function focusRegionAtlasView(viewerKey, region) {
     viewer.camera.up.set(0, 0, -1);
     viewer.camera.lookAt(0, 0, 0);
     viewer.controls.update();
+}
+
+function captureViewerPoseState() {
+    const snapshot = {};
+    Object.entries(viewers).forEach(([key, viewer]) => {
+        if (!viewer?.camera || !viewer?.controls) {
+            return;
+        }
+        snapshot[key] = {
+            position: viewer.camera.position.clone(),
+            quaternion: viewer.camera.quaternion.clone(),
+            up: viewer.camera.up.clone(),
+            target: viewer.controls.target.clone(),
+            zoom: viewer.camera.zoom,
+        };
+    });
+    return snapshot;
+}
+
+function restoreViewerPoseState(snapshot) {
+    Object.entries(snapshot || {}).forEach(([key, pose]) => {
+        const viewer = viewers[key];
+        if (!viewer?.camera || !viewer?.controls || !pose) {
+            return;
+        }
+        viewer.camera.position.copy(pose.position);
+        viewer.camera.quaternion.copy(pose.quaternion);
+        viewer.camera.up.copy(pose.up);
+        viewer.controls.target.copy(pose.target);
+        viewer.camera.zoom = pose.zoom;
+        viewer.camera.updateProjectionMatrix();
+        viewer.controls.update();
+    });
 }
 
 function buildHazardAtlasHtml(items) {
