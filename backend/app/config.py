@@ -1,4 +1,8 @@
-"""Global configuration."""
+"""Global configuration.
+
+本文件集中管理系统路径、模型参数、标签体系、业务分类和 AI 默认配置。
+后端其他模块通过读取这里的常量保持类别名称、颜色和业务分组一致。
+"""
 import json
 import os
 
@@ -12,6 +16,7 @@ def _get_env_path(name: str, default: str) -> str:
 
 
 # Data directories
+# 原始上传文件、处理结果和运行时缓存都放在 backend/data 下，便于原型系统集中管理。
 DATA_DIR = os.path.join(BASE_DIR, "data")
 CONFIG_DIR = os.path.join(PROJECT_ROOT, "backend", "config")
 RAW_DIR = os.path.join(DATA_DIR, "raw")
@@ -21,6 +26,7 @@ RAW_UPLOAD_DIR = os.path.join(RAW_DIR, "_runtime_uploads")
 RESULT_CACHE_DIR = os.path.join(RESULTS_DIR, "_runtime_cache")
 
 # Runtime cache settings
+# 任务缓存用于保存用户上传后的点云数组、预测标签和分析结果。
 TASK_CACHE_MAX_ITEMS = max(int(os.getenv("WATER_TWIN_TASK_CACHE_MAX_ITEMS", "8")), 1)
 TASK_CACHE_TTL_SECONDS = max(int(os.getenv("WATER_TWIN_TASK_CACHE_TTL_SECONDS", str(4 * 60 * 60))), 300)
 
@@ -33,6 +39,7 @@ CORS_ORIGINS = [
 ]
 
 # Model settings
+# PointNet 模型位于外部项目目录，后端只负责加载模型并调用推理。
 POINTNET_DIR = _get_env_path("WATER_TWIN_POINTNET_DIR", r"E:\desktop\graduate_project\pointnet")
 MODEL_CHECKPOINT = _get_env_path(
     "WATER_TWIN_MODEL_CHECKPOINT",
@@ -47,6 +54,7 @@ BLOCK_SIZE = 50.0
 BATCH_SIZE = 32
 
 # Class labels
+# 模型输出的 15 类语义标签，索引位置必须与训练模型的类别顺序保持一致。
 CLASS_NAMES = [
     "Shed",
     "Concretehouse",
@@ -84,6 +92,7 @@ CLASS_NAMES_CN = [
 ]
 
 # Business categories
+# 业务分类把 15 类语义标签聚合成更适合巡检解释的 6 个统计分组。
 BUSINESS_CATEGORIES = {
     "居民地设施": [0, 1],
     "交通": [2, 3],
@@ -146,6 +155,7 @@ DEFAULT_AI_SETTINGS = {
 
 
 def load_ai_settings() -> dict:
+    """读取 AI 配置文件；配置不存在或损坏时返回默认关闭状态。"""
     if not os.path.exists(AI_SETTINGS_PATH):
         return DEFAULT_AI_SETTINGS.copy()
 

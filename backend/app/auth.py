@@ -1,4 +1,8 @@
-"""Database-backed authentication utilities."""
+"""Database-backed authentication utilities.
+
+本模块负责用户、会话和审计日志的 SQLite 持久化管理。
+密码只保存加盐哈希值，会话保存在服务端表中，管理员安全中心读取这里的用户和日志数据。
+"""
 from __future__ import annotations
 
 import hashlib
@@ -23,17 +27,20 @@ ACCOUNT_LOCK_SECONDS = 600
 
 
 def _get_conn() -> sqlite3.Connection:
+    """创建 SQLite 连接，并让查询结果可以按字段名访问。"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """检查表中是否已有指定字段，用于兼容旧数据库自动补字段。"""
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     return any(str(row[1]) == column for row in rows)
 
 
 def init_auth_db() -> None:
+    """初始化用户表、会话表和审计日志表，并确保默认管理员存在。"""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with _get_conn() as conn:
         conn.execute(
@@ -95,12 +102,14 @@ def _utc_now() -> datetime:
 
 
 def _hash_password(password: str, salt: Optional[str] = None) -> str:
+    """使用随机盐值和 PBKDF2-HMAC-SHA256 生成密码哈希。"""
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120000)
     return f"{salt}${digest.hex()}"
 
 
 def _verify_password(password: str, stored_hash: str) -> bool:
+    """重新计算密码哈希并使用恒定时间比较，降低时序攻击风险。"""
     try:
         salt, expected = stored_hash.split("$", 1)
     except ValueError:
@@ -110,6 +119,7 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 
 
 def ensure_default_admin() -> None:
+    """确保系统至少存在一个默认管理员账号，便于首次启动后登录。"""
     default_username = os.getenv("WATER_TWIN_USERNAME", "admin")
     default_password = os.getenv("WATER_TWIN_PASSWORD", "admin123")
     if get_user(default_username):
@@ -127,12 +137,14 @@ def get_user(username: str) -> sqlite3.Row | None:
 
 
 def validate_username(username: str) -> str | None:
+    """校验用户名格式，前后端规则保持一致。"""
     if not USERNAME_PATTERN.fullmatch(username or ""):
         return "用户名需为 3-32 位，可包含字母、数字、下划线、点和短横线"
     return None
 
 
 def validate_password_strength(password: str) -> str | None:
+    """校验密码复杂度，要求长度、字母、数字和特殊字符同时满足。"""
     if not password or len(password) < 8 or len(password) > 64:
         return "密码需为 8-64 位"
     if not re.search(r"[A-Za-z]", password):
@@ -145,6 +157,7 @@ def validate_password_strength(password: str) -> str | None:
 
 
 def mask_ip(value: str | None) -> str:
+    """对日志中展示的 IP 做脱敏，避免安全中心直接暴露完整地址。"""
     if not value:
         return "-"
     try:
@@ -159,6 +172,7 @@ def mask_ip(value: str | None) -> str:
 
 
 def create_user(username: str, password: str, role: str = "user") -> None:
+    """创建用户并保存密码哈希。"""
     now = _utc_now().isoformat()
     password_hash = _hash_password(password)
     with _get_conn() as conn:
@@ -170,6 +184,7 @@ def create_user(username: str, password: str, role: str = "user") -> None:
 
 
 def update_password(username: str, new_password: str) -> None:
+    """更新用户密码，调用方通常会同步清理旧会话。"""
     now = _utc_now().isoformat()
     password_hash = _hash_password(new_password)
     with _get_conn() as conn:
@@ -181,6 +196,7 @@ def update_password(username: str, new_password: str) -> None:
 
 
 def remove_user_sessions(username: str, keep_token: Optional[str] = None) -> None:
+    """删除指定用户会话，可选择保留当前会话。"""
     with _get_conn() as conn:
         if keep_token:
             conn.execute("DELETE FROM sessions WHERE username = ? AND token != ?", (username, keep_token))
@@ -201,6 +217,7 @@ def is_user_frozen(row: sqlite3.Row | None) -> bool:
 
 
 def is_user_locked(row: sqlite3.Row | None) -> tuple[bool, str | None]:
+    """判断账号是否仍处于锁定期；过期锁定会自动解除。"""
     if not row:
         return False, None
     locked_until = row["locked_until"] if "locked_until" in row.keys() else None
@@ -217,6 +234,7 @@ def is_user_locked(row: sqlite3.Row | None) -> tuple[bool, str | None]:
 
 
 def register_failed_login(username: str) -> tuple[int, str | None]:
+    """记录账号级登录失败次数，达到阈值后锁定账号。"""
     row = get_user(username)
     if not row:
         return 0, None
@@ -234,6 +252,7 @@ def register_failed_login(username: str) -> tuple[int, str | None]:
 
 
 def reset_login_failures(username: str, ip: str | None = None, user_agent: str | None = None) -> None:
+    """登录成功后清零失败次数，并记录最近登录环境。"""
     now = _utc_now().isoformat()
     with _get_conn() as conn:
         conn.execute(
@@ -269,6 +288,7 @@ def log_auth_event(
     user_agent: str | None = None,
     detail: str | None = None,
 ) -> None:
+    """写入一条认证或管理员操作审计日志。"""
     with _get_conn() as conn:
         conn.execute(
             """
@@ -281,6 +301,7 @@ def log_auth_event(
 
 
 def _classify_auth_event(event_type: str, success: bool) -> str:
+    """把审计事件粗分为高风险、关注和正常，供安全中心展示。"""
     if event_type in {"account_locked", "login_blocked_locked", "unlock_failed", "admin_delete_user"}:
         return "high"
     if not success or event_type in {"admin_freeze_user", "login_failed"}:
@@ -289,6 +310,7 @@ def _classify_auth_event(event_type: str, success: bool) -> str:
 
 
 def get_recent_auth_logs(username: str | None = None, limit: int = 20) -> list[dict]:
+    """读取最近审计日志，可按用户名过滤。"""
     with _get_conn() as conn:
         if username:
             rows = conn.execute(
@@ -327,6 +349,7 @@ def get_recent_auth_logs(username: str | None = None, limit: int = 20) -> list[d
 
 
 def get_security_overview(username: str) -> dict:
+    """读取单个用户的安全概览，当前主要供个人安全提示扩展使用。"""
     row = get_user(username)
     if not row:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -343,6 +366,7 @@ def get_security_overview(username: str) -> dict:
 
 
 def list_users() -> list[dict]:
+    """列出所有用户及其角色、冻结、锁定和最近登录状态。"""
     with _get_conn() as conn:
         rows = conn.execute(
             """
@@ -369,6 +393,7 @@ def list_users() -> list[dict]:
 
 
 def freeze_user(username: str, frozen: bool) -> None:
+    """冻结或解冻用户；冻结时立即清理该用户所有会话。"""
     with _get_conn() as conn:
         conn.execute(
             "UPDATE users SET is_frozen = ?, updated_at = ? WHERE username = ?",
@@ -380,6 +405,7 @@ def freeze_user(username: str, frozen: bool) -> None:
 
 
 def delete_user(username: str) -> None:
+    """删除用户并同步删除其会话。"""
     with _get_conn() as conn:
         conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
         conn.execute("DELETE FROM users WHERE username = ?", (username,))
@@ -402,6 +428,7 @@ def clear_auth_logs(username: str | None = None) -> None:
 
 
 def get_admin_security_overview() -> dict:
+    """生成管理员安全中心所需的统计、用户列表和最近日志。"""
     users = list_users()
     recent_logs = get_recent_auth_logs(limit=50)
     return {
@@ -417,6 +444,7 @@ def get_admin_security_overview() -> dict:
 
 
 def verify_credentials(username: str, password: str) -> bool:
+    """校验用户名和密码是否匹配。"""
     row = get_user(username)
     if not row:
         return False
@@ -424,6 +452,7 @@ def verify_credentials(username: str, password: str) -> bool:
 
 
 def create_session(username: str, remember_me: bool = False) -> tuple[str, int]:
+    """创建服务端会话令牌，返回令牌和有效期秒数。"""
     token = secrets.token_urlsafe(32)
     ttl_seconds = 60 * 60 * 24 * 7 if remember_me else 60 * 60 * 12
     now = _utc_now()
@@ -438,6 +467,7 @@ def create_session(username: str, remember_me: bool = False) -> tuple[str, int]:
 
 
 def remove_session(token: Optional[str]) -> None:
+    """删除指定会话令牌，用于登出。"""
     if not token:
         return
     with _get_conn() as conn:
@@ -446,6 +476,7 @@ def remove_session(token: Optional[str]) -> None:
 
 
 def get_current_user(session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME)) -> str:
+    """FastAPI 依赖函数：从 Cookie 会话令牌解析当前登录用户。"""
     if not session_token:
         raise HTTPException(status_code=401, detail="未登录")
 

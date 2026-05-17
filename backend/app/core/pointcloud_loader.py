@@ -1,4 +1,8 @@
-"""点云数据读取与预处理"""
+"""点云数据读取与预处理。
+
+本模块负责把上传的 .pth/.npy 文件统一读成 NumPy 数组，并在模型推理前
+将完整点云切分成 PointNet 可处理的固定点数分块。
+"""
 import numpy as np
 import torch
 import os
@@ -11,6 +15,7 @@ def load_pth_pointcloud(file_path: str) -> np.ndarray:
     格式: x, y, z, r, g, b, label_id
     同时兼容 .npy 文件。
     """
+    # 根据扩展名选择读取方式，读取后统一转为二维 float32 数组。
     ext = os.path.splitext(file_path)[1].lower()
     if ext == ".pth":
         data = torch.load(file_path, map_location="cpu", weights_only=False)
@@ -64,6 +69,7 @@ def preprocess_for_inference(data: np.ndarray, block_size: float = 50.0,
 
     9通道: centered_xyz(3) + rgb_normalized(3) + normalized_xyz(3)
     """
+    # 前三列是坐标，后三列是 RGB；颜色归一化后参与模型输入。
     points_xyz = data[:, :3].copy()
     rgb = data[:, 3:6] / 255.0
 
@@ -79,6 +85,7 @@ def preprocess_for_inference(data: np.ndarray, block_size: float = 50.0,
     data_list, index_list = [], []
     padding = 0.001
 
+    # 在 XY 平面滑动切块；每个空间块补齐到 4096 的整数倍，便于批量推理。
     for iy in range(grid_y):
         for ix in range(grid_x):
             s_x = coord_min[0] + ix * stride
@@ -106,6 +113,7 @@ def preprocess_for_inference(data: np.ndarray, block_size: float = 50.0,
 
             batch_xyz = points_xyz[point_idxs, :].copy()
             batch_rgb = rgb[point_idxs, :]
+            # 9 维特征包括块内中心化坐标、归一化颜色和全局归一化坐标。
             normalized_xyz = batch_xyz / safe_max
             batch_xyz[:, 0] -= (s_x + block_size / 2.0)
             batch_xyz[:, 1] -= (s_y + block_size / 2.0)

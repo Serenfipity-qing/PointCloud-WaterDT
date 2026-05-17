@@ -1,6 +1,7 @@
-"""
-Unified segmentation model interface.
-Currently supports PointNet and can be replaced without changing upper-layer APIs.
+"""Unified segmentation model interface.
+
+本模块把具体分割模型封装成统一接口。上层 API 只调用 predict，不需要关心
+PointNet 的模型路径、权重加载、分块推理和投票融合细节。
 """
 import abc
 import os
@@ -29,13 +30,17 @@ class BaseSegModel(abc.ABC):
 
 
 class PointNetSegModel(BaseSegModel):
-    """PointNet semantic segmentation model wrapper."""
+    """PointNet semantic segmentation model wrapper.
+
+    负责加载外部 PointNet 模型，并把完整点云预测为逐点类别标签。
+    """
 
     def __init__(self):
         self.model = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def load(self, checkpoint_path: str = MODEL_CHECKPOINT):
+        """加载 PointNet 网络结构和训练好的权重文件。"""
         models_dir = os.path.join(POINTNET_DIR, "models")
         if not os.path.isdir(models_dir):
             raise FileNotFoundError(
@@ -60,6 +65,7 @@ class PointNetSegModel(BaseSegModel):
         return self
 
     def predict(self, points: np.ndarray) -> np.ndarray:
+        """对完整点云执行分块推理，并用投票池融合成最终逐点标签。"""
         if self.model is None:
             raise RuntimeError("Model is not loaded. Call load() first.")
 
@@ -72,6 +78,8 @@ class PointNetSegModel(BaseSegModel):
             stride=stride,
         )
 
+        # vote_pool 的每一行对应一个原始点，每一列对应一个语义类别。
+        # 同一个点可能在重叠分块中被预测多次，最终取票数最高的类别。
         vote_pool = np.zeros((num_points, NUM_CLASSES), dtype=np.float32)
         total_blocks = batched_data.shape[0]
 
@@ -95,6 +103,7 @@ _model_instance: BaseSegModel | None = None
 
 
 def get_model_instance() -> BaseSegModel:
+    """按需创建全局模型实例，避免每次推理都重复加载权重。"""
     global _model_instance
     if _model_instance is None:
         _model_instance = PointNetSegModel()
