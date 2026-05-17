@@ -1,4 +1,8 @@
-"""Statistics and inspection analysis services."""
+"""Statistics and inspection analysis services.
+
+本模块负责把逐点语义标签转成统计结果、巡检告警、防洪评估和堤坝岸坡评估。
+风险规则主要基于类别点数、类别占比、组合指标和数据集基线阈值。
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -12,6 +16,7 @@ from ..config import (
 )
 
 
+# 基线阈值来自自定义点云数据集中各类别和组合指标的占比分布。
 DATASET_BASELINES = {
     "waterline_ratio": {"low": 44.28, "medium": 57.40, "high": 72.18},
     "ditch_ratio": {"low": 0.01, "medium": 0.37, "high": 0.70},
@@ -26,6 +31,7 @@ DATASET_BASELINES = {
     "drainage_pressure_ratio": {"low": 66.87, "medium": 78.19, "high": 87.30},
 }
 
+# 比例门槛用于避免只要出现少量类别点就触发告警。
 MIN_RATIO_GATES = {
     "waterline_active": 2.0,
     "ditch_active": 0.3,
@@ -35,6 +41,7 @@ MIN_RATIO_GATES = {
     "asset_active": 4.0,
 }
 
+# 点数门槛用于降低小样本场景中比例异常造成的误报。
 MIN_COUNT_GATES = {
     "waterline": 80,
     "ditch": 30,
@@ -63,6 +70,7 @@ DRAINAGE_STATUS_PENALTY = {
 
 
 def compute_unified_risk_engine(labels: np.ndarray) -> dict:
+    """统一计算巡检、防洪和堤坝岸坡评估所需的基础指标。"""
     total, label_counts, ratios = _build_ratio_data(labels)
 
     slope_ratio = ratios[4]
@@ -108,7 +116,7 @@ def compute_unified_risk_engine(labels: np.ndarray) -> dict:
 
 
 def compute_statistics(labels: np.ndarray) -> dict:
-    """Compute semantic and business statistics from labels."""
+    """根据逐点标签统计 15 类语义类别和 6 类业务分类占比。"""
     total = int(labels.shape[0])
     unique, counts = np.unique(labels.astype(int), return_counts=True)
     label_counts = {int(u): int(c) for u, c in zip(unique, counts)}
@@ -143,7 +151,7 @@ def compute_statistics(labels: np.ndarray) -> dict:
 
 
 def generate_inspection_report(labels: np.ndarray) -> dict:
-    """Build a ratio-based inspection report using dataset-derived baselines."""
+    """生成巡检报告对象，并附带防洪和堤坝岸坡基础评估结果。"""
     engine = compute_unified_risk_engine(labels)
     return {
         **engine["inspection"],
@@ -153,6 +161,7 @@ def generate_inspection_report(labels: np.ndarray) -> dict:
 
 
 def _score_inspection_risk(metrics: dict) -> dict:
+    """按五类巡检风险规则生成告警列表、总体等级和处置建议。"""
     ratios = metrics["ratios"]
     counts = metrics["counts"]
     waterline_ratio = ratios["waterline_ratio"]
@@ -345,6 +354,7 @@ def _score_inspection_risk(metrics: dict) -> dict:
 
 
 def _score_flood_risk(metrics: dict) -> dict:
+    """仅根据点云统计结果计算基础防洪风险分数。"""
     ratios = metrics["ratios"]
     counts = metrics["counts"]
 
@@ -401,6 +411,7 @@ def assess_flood_risk_with_inputs(
     forecast_rainfall: float,
     drainage_status: str,
 ) -> dict:
+    """融合水位、降雨和排水状态，生成最终防洪预警结果。"""
     flood_base = _score_flood_risk(metrics)
     safe_warning_level = max(float(warning_level), 0.1)
     water_pressure = min((max(float(water_level), 0.0) / safe_warning_level) * 100, 140)
@@ -450,6 +461,7 @@ def assess_flood_risk_with_inputs(
 
 
 def assess_embankment_risk(metrics: dict) -> dict:
+    """生成堤坝岸坡专题评估结果和现场排查建议。"""
     base = _score_embankment_risk(metrics)
     ratios = metrics["ratios"]
 
@@ -478,6 +490,7 @@ def assess_embankment_risk(metrics: dict) -> dict:
 
 
 def _score_embankment_risk(metrics: dict) -> dict:
+    """根据堤坝、边坡、陡坎、裸地、水边线等占比计算岸坡风险分。"""
     ratios = metrics["ratios"]
     counts = metrics["counts"]
 
@@ -534,6 +547,7 @@ def generate_inspection_alerts(labels: np.ndarray) -> list[dict]:
 
 
 def _build_ratio_data(labels: np.ndarray) -> tuple[int, dict[int, int], dict[int, float]]:
+    """把逐点标签转换为总点数、各类点数和各类百分比。"""
     total = int(labels.shape[0])
     unique, counts = np.unique(labels.astype(int), return_counts=True)
     label_counts = {int(u): int(c) for u, c in zip(unique, counts)}
@@ -545,6 +559,7 @@ def _build_ratio_data(labels: np.ndarray) -> tuple[int, dict[int, int], dict[int
 
 
 def _level_from_thresholds(value: float, thresholds: dict[str, float]) -> tuple[str | None, int]:
+    """根据低中高三档阈值判断风险等级并计算对应分数。"""
     if value >= thresholds["high"]:
         return "high", _score_within_level(value, thresholds, "high")
     if value >= thresholds["medium"]:
@@ -555,6 +570,7 @@ def _level_from_thresholds(value: float, thresholds: dict[str, float]) -> tuple[
 
 
 def _score_within_level(value: float, thresholds: dict[str, float], level: str) -> int:
+    """在风险等级内部做线性插值，使同等级内指标越高分数越高。"""
     if level == "high":
         start = thresholds["high"]
         end = max(start + (thresholds["high"] - thresholds["medium"]), start + 1)
@@ -584,6 +600,7 @@ def _build_alert(
     metric_value: float,
     point_count: int,
 ) -> dict:
+    """统一封装一条巡检告警，供前端、报告导出和 AI 上下文复用。"""
     return {
         "code": code,
         "title": title,
@@ -604,6 +621,7 @@ def _build_alert(
 
 
 def _build_overall_summary(alerts: list[dict]) -> dict:
+    """根据告警列表汇总总体风险等级和总体说明。"""
     if not alerts:
         return {
             "level": "normal",
@@ -641,6 +659,7 @@ def _build_overall_summary(alerts: list[dict]) -> dict:
 
 
 def _build_recommendations(alerts: list[dict]) -> list[str]:
+    """从告警中提取不重复的处置建议。"""
     if not alerts:
         return [
             "当前场景未触发高占比风险组合，可保持常规巡查频率。",

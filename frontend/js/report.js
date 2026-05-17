@@ -21,6 +21,7 @@ btnInspectionDocx?.addEventListener('click', () => exportInspectionReport('docx'
 renderReport();
 
 function renderReport() {
+    // 报告页优先使用本地任务统计；缺失时按文件编号向后端补取。
     if (!currentTask || !currentTask.fileId) {
         renderEmptyState();
         return;
@@ -64,6 +65,7 @@ function renderReport() {
 }
 
 function fillStatistics(statistics) {
+    // 只展示点数大于 0 的语义类别和业务类别，减少无关空类别。
     const nonZeroClassStats = (statistics.class_stats || []).filter((item) => Number(item.count) > 0);
     const nonZeroBusinessStats = (statistics.business_stats || []).filter((item) => Number(item.count) > 0);
 
@@ -88,6 +90,7 @@ function fillStatistics(statistics) {
 }
 
 function exportCurrent(format) {
+    // 下载结构化统计结果，支持 JSON 和 CSV。
     if (!currentTask || !currentTask.fileId || !currentTask.hasPrediction) {
         alert('当前没有可导出的分析结果');
         return;
@@ -96,6 +99,7 @@ function exportCurrent(format) {
 }
 
 function exportInspectionReport(format) {
+    // 下载巡检报告，前端提供 PDF 和 Word 两种入口。
     if (!currentTask || !currentTask.fileId || !currentTask.hasPrediction) {
         alert('当前没有可生成的巡检报告');
         return;

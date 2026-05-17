@@ -1,5 +1,8 @@
 /**
  * 水利数字孪生系统 - 前端主逻辑
+ *
+ * 本文件负责点云分析工作台：上传点云、请求显示数据、Three.js 渲染、
+ * 执行语义分割、类别高亮、对比视图、风险区域定位和隐患图册导出。
  */
 const APP_API_BASE = window.WATER_TWIN_API || '';
 
@@ -64,6 +67,7 @@ downsampleInput?.addEventListener('change', () => {
 });
 
 function initScenes() {
+    // 初始化单视图和对比视图两个 Three.js 视口。
     createViewer('single', 'viewportSingle', 'viewportInfoSingle');
     createViewer('compare', 'viewportCompare', 'viewportInfoCompare');
     updateViewportLayout();
@@ -72,6 +76,7 @@ function initScenes() {
 }
 
 function createViewer(key, containerId, infoId) {
+    // 每个视口独立维护场景、相机、渲染器和鼠标控制器。
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 1);
     const height = Math.max(container.clientHeight, 1);
@@ -130,6 +135,7 @@ function handleResize() {
 }
 
 function syncViewerControls(sourceKey) {
+    // 对比视图下同步左右视口的相机位置、旋转、缩放和观察目标。
     if (currentViewMode !== 'compare' || isSyncingControls) {
         return;
     }
@@ -159,6 +165,7 @@ function updateViewportLayout() {
 }
 
 document.getElementById('fileInput').addEventListener('change', async (e) => {
+    // 上传点云后，后端返回任务编号和基础信息，前端写入跨页面状态。
     const file = e.target.files[0];
     if (!file) return;
 
@@ -260,6 +267,7 @@ function updateAnalysisStatus() {
 }
 
 async function loadCurrentView() {
+    // 优先从 IndexedDB 读取已缓存的点云视图，未命中时再请求后端。
     if (!currentFileId) {
         return;
     }
@@ -296,6 +304,7 @@ async function loadCurrentView() {
 }
 
 async function loadPointCloudIntoViewer(viewerKey, mode, source = 'pred') {
+    // 按显示模式、标签来源和降采样参数请求后端点云显示数据。
     const ds = getCurrentDownsample();
     const res = await fetch(
         `${APP_API_BASE}/api/pointcloud/${currentFileId}?mode=${mode}&downsample=${ds}&source=${source}`
@@ -338,6 +347,7 @@ function viewerLabel(mode, viewerKey, source) {
 }
 
 function renderPointCloud(viewerKey, positions, colors, labels = null, mode = currentMode) {
+    // 把后端返回的坐标和颜色转换为 Three.js 点云几何体。
     const viewer = viewers[viewerKey];
     clearViewer(viewerKey);
 
@@ -432,6 +442,7 @@ function applyHighlightToAllViewers() {
 }
 
 function applyHighlightToViewer(viewerKey) {
+    // 基于已加载的标签数组在前端完成类别高亮、变暗或隐藏。
     const viewer = viewers[viewerKey];
     if (!viewer?.pointCloud || !viewer.baseColors || !viewer.basePositions) {
         return;
@@ -606,6 +617,7 @@ function updateViewModeButtons() {
 }
 
 async function runPrediction() {
+    // 调用后端同步执行 PointNet 推理，并把统计、告警和巡检结果写入任务状态。
     if (!currentFileId) return;
 
     const btn = document.getElementById('btnPredict');
@@ -661,6 +673,7 @@ async function runPrediction() {
 }
 
 function updateLegend(classStats) {
+    // 渲染语义类别图例，点击类别可切换高亮筛选。
     const el = legendList;
     if (!el) return;
     semanticStatsCache = Array.isArray(classStats)
@@ -677,6 +690,7 @@ function updateLegend(classStats) {
 }
 
 function updateBusinessStats(bizStats) {
+    // 渲染业务分类占比条，点击业务分类可按分组筛选点云。
     const el = businessStatsEl;
     if (!el) return;
     businessStatsCache = Array.isArray(bizStats)
@@ -753,6 +767,7 @@ function getViewerCacheKey() {
 }
 
 async function cacheViewerData(viewerKey, payload) {
+    // 点云坐标和颜色较大，放入 IndexedDB，避免 localStorage 容量问题。
     const cacheKey = getViewerCacheKey();
     if (!cacheKey) {
         return;
@@ -893,6 +908,7 @@ async function restoreTaskState() {
 }
 
 async function fetchRiskRegions() {
+    // 从后端获取风险区域列表，用于侧边栏展示和三维高亮。
     if (!currentFileId || !hasPrediction) {
         riskRegions = [];
         activeRiskRegionCode = null;
@@ -924,6 +940,7 @@ async function fetchRiskRegions() {
 }
 
 function renderRiskRegions(regions) {
+    // 将后端返回的风险区域转成可点击的定位卡片。
     if (!riskRegionList) {
         return;
     }
@@ -967,6 +984,7 @@ function focusTopRiskRegion() {
 }
 
 function focusRiskRegion(index) {
+    // 点击风险区域后，在当前视图中叠加高亮；对比模式下左右同步高亮。
     const region = riskRegions[index];
     if (!region) {
         return;
@@ -1098,6 +1116,7 @@ function focusRegionTopDown(viewerKey, region) {
 }
 
 function focusRegionHighlightOnly(viewerKey, region) {
+    // 根据风险区域中心点和包围盒绘制半透明框、线框、竖向标记和文字标签。
     const viewer = viewers[viewerKey];
     if (!viewer?.pointCloud) {
         return;
@@ -1209,6 +1228,7 @@ function transformRawPointToViewer(point, rawCenter) {
 }
 
 function buildRiskLabelSprite(text, color) {
+    // 用 Canvas 生成文字贴图，再作为 Sprite 放到 Three.js 场景中。
     const canvas = document.createElement('canvas');
     canvas.width = 520;
     canvas.height = 120;

@@ -1,4 +1,8 @@
-"""Export helpers."""
+"""Export helpers.
+
+本模块负责把分析结果导出为 JSON、CSV、PDF 和 DOCX。
+导出内容统一来自后端缓存中的统计结果、巡检告警和巡检报告对象。
+"""
 import csv
 import io
 import json
@@ -9,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 def export_json(points: np.ndarray, labels: np.ndarray, stats: dict, alerts: list, inspection: dict | None = None) -> str:
-    """Export the full analysis result as JSON."""
+    """导出结构化分析结果，便于后续程序读取。"""
     result = {
         "statistics": stats,
         "inspection_alerts": alerts,
@@ -20,7 +24,7 @@ def export_json(points: np.ndarray, labels: np.ndarray, stats: dict, alerts: lis
 
 
 def export_csv(stats: dict, non_zero_only: bool = False) -> str:
-    """Export aggregated semantic and business statistics."""
+    """导出语义类别和业务类别统计，适合用 Excel 查看。"""
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["统计维度", "类别名称", "点数", "占比(%)"])
@@ -49,6 +53,7 @@ def export_csv(stats: dict, non_zero_only: bool = False) -> str:
 
 
 def export_inspection_report(task: dict) -> str:
+    """生成文本形式的巡检报告内容，当前也用于 TXT 导出链路。"""
     inspection = task.get("inspection") or {}
     stats = task.get("statistics") or {}
     alerts = task.get("alerts") or []
@@ -89,6 +94,7 @@ def export_inspection_report(task: dict) -> str:
 
 
 def build_inspection_report_context(task: dict) -> dict:
+    """把前端任务对象整理成 PDF/DOCX 共用的报告上下文。"""
     inspection = task.get("inspection") or {}
     stats = task.get("statistics") or {}
     alerts = task.get("alerts") or []
@@ -105,6 +111,7 @@ def build_inspection_report_context(task: dict) -> dict:
 
 
 def build_inspection_report_text(context: dict) -> str:
+    """把巡检报告上下文转换为纯文本段落。"""
     lines = [
         "自动巡检报告",
         f"生成时间：{context.get('generated_at', '')}",
@@ -134,6 +141,7 @@ def build_inspection_report_text(context: dict) -> str:
 
 
 def build_inspection_report_pdf(context: dict) -> bytes:
+    """把巡检报告绘制成单页 PDF 图像。"""
     width, height = 1240, 1754
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
@@ -179,6 +187,7 @@ def build_inspection_report_pdf(context: dict) -> bytes:
 
 
 def build_inspection_report_docx(context: dict) -> bytes:
+    """生成可被 Word 打开的简化 DOCX 巡检报告。"""
     return _build_minimal_docx(build_inspection_report_text(context))
 
 

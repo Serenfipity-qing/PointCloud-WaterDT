@@ -23,6 +23,7 @@ loadSecurityOverview();
 bindSecurityActions();
 
 async function loadSecurityOverview() {
+    // 管理员安全中心一次性读取统计概览、用户列表和最近审计日志。
     try {
         const res = await fetch(`${SECURITY_API_BASE}/api/auth/security-overview`, {
             credentials: 'include',
@@ -40,6 +41,7 @@ async function loadSecurityOverview() {
 }
 
 function renderOverview(data) {
+    // 渲染顶部安全指标、审计日志列表和用户管理卡片。
     if (totalUsersEl) {
         totalUsersEl.textContent = String(data.summary?.total_users ?? 0);
     }
@@ -151,6 +153,7 @@ function escapeHtml(value) {
 }
 
 function bindSecurityActions() {
+    // 绑定管理员操作：创建用户、冻结、解锁、重置密码、删除和清理日志。
     btnClearAllLogs?.addEventListener('click', async () => {
         if (!confirm('确认清空全部审计日志？')) return;
         await postSecurityAction('/api/auth/admin/logs/clear', {});
@@ -237,6 +240,7 @@ function bindSecurityActions() {
 }
 
 function populateEventFilterOptions(rows) {
+    // 日志事件类型从实际返回数据中提取，避免下拉项与日志不一致。
     if (!logFilterEventEl) return;
     const currentValue = String(logFilterEventEl.value || '');
     const options = Array.from(new Set(
@@ -256,6 +260,7 @@ function populateEventFilterOptions(rows) {
 }
 
 async function postSecurityAction(path, payload, autoReload = true) {
+    // 统一提交管理员操作请求，成功后按需刷新安全中心数据。
     const res = await fetch(`${SECURITY_API_BASE}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -273,6 +278,7 @@ async function postSecurityAction(path, payload, autoReload = true) {
 }
 
 function openResetPasswordModal(username) {
+    // 打开重置密码弹窗，并填入当前选中的用户名。
     if (!resetPasswordModal || !resetTargetEl || !resetPasswordErrorEl) return;
     resetTargetEl.value = username;
     resetPasswordErrorEl.textContent = '';
@@ -286,11 +292,13 @@ function closeResetPasswordModal() {
 }
 
 function rerenderSecurityLogs() {
+    // 前端本地筛选日志，不重复请求后端。
     if (!currentSecurityOverview) return;
     renderOverview(currentSecurityOverview);
 }
 
 function filterSecurityLogs(rows) {
+    // 用户名、事件类型和风险等级三个筛选条件取交集。
     const usernameKeyword = String(logFilterUserEl?.value || '').trim().toLowerCase();
     const eventType = String(logFilterEventEl?.value || '').trim();
     const severity = String(logFilterSeverityEl?.value || '').trim();

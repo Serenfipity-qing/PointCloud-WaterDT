@@ -21,6 +21,7 @@ renderEmbankmentAssessment().catch((err) => {
 });
 
 function renderEmbankmentTask() {
+    // 展示当前点云任务信息，未完成分割时提示用户回到工作台。
     if (!embankmentTaskCard) return;
     if (!embankmentTask || !embankmentTask.fileId || !embankmentTask.hasPrediction) {
         embankmentTaskCard.innerHTML = `
@@ -40,6 +41,7 @@ function renderEmbankmentTask() {
 }
 
 async function renderEmbankmentAssessment() {
+    // 自动读取后端堤坝岸坡评估结果，并缓存到当前任务状态中。
     embankmentTask = window.TaskState?.read?.() || embankmentTask;
     const ratios = embankmentTask?.inspection?.metrics?.ratios || {};
     const dam = readRatio(ratios.dam_ratio);
@@ -86,6 +88,7 @@ async function renderEmbankmentAssessment() {
 }
 
 function applyAssessment(assessment, dam, slope, scarp, bareland, waterline, assets) {
+    // 渲染风险等级、风险分数、关键因子和现场排查建议。
     if (!assessment) {
         if (embankmentRiskLevel) embankmentRiskLevel.textContent = '等待计算';
         if (embankmentRiskScore) embankmentRiskScore.textContent = '-';

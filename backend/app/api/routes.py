@@ -1,4 +1,8 @@
-"""Point cloud and auth API routes."""
+"""Point cloud, auth, analysis and export API routes.
+
+本文件是后端接口层核心，负责接收前端请求并调度认证、点云读取、模型推理、
+统计分析、风险区域定位、AI 问答和报告导出等业务服务。
+"""
 from __future__ import annotations
 
 import io
@@ -70,7 +74,11 @@ from ..utils.export import (
 
 router = APIRouter(prefix="/api", tags=["pointcloud"])
 
+# 运行时任务缓存：保存上传后的点云数组、预测标签、统计结果和巡检结果。
+# 原型系统用进程内缓存换取简单部署，因此服务重启后任务会丢失。
 _cache: dict[str, dict[str, Any]] = {}
+
+# 登录限流缓存：按 IP + 用户名记录短时间失败次数，防止高频试密码。
 _login_attempts: dict[str, dict[str, float | int]] = defaultdict(dict)
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_BLOCK_SECONDS = 300
@@ -141,10 +149,12 @@ def _utc_ts() -> float:
 
 
 def _touch_cached_task(cached: dict[str, Any]) -> None:
+    """更新任务最近访问时间，用于缓存过期和淘汰排序。"""
     cached["last_accessed_at"] = _utc_ts()
 
 
 def _cleanup_task_files(cached: dict[str, Any]) -> None:
+    """删除任务关联的上传文件和预测结果文件。"""
     for path_key in ("path", "result_path"):
         path = cached.get(path_key)
         if path and os.path.exists(path):
@@ -155,6 +165,7 @@ def _cleanup_task_files(cached: dict[str, Any]) -> None:
 
 
 def _evict_task(file_id: str) -> None:
+    """从内存缓存中移除任务，并清理其运行时文件。"""
     cached = _cache.pop(file_id, None)
     if not cached:
         return
@@ -162,6 +173,7 @@ def _evict_task(file_id: str) -> None:
 
 
 def _purge_expired_cache() -> None:
+    """清理超过缓存有效期的任务，避免运行时文件长期堆积。"""
     if not _cache:
         return
     now = _utc_ts()
@@ -175,6 +187,7 @@ def _purge_expired_cache() -> None:
 
 
 def _enforce_cache_limits() -> None:
+    """当任务数量达到上限时，优先淘汰最久未访问的任务。"""
     _purge_expired_cache()
     if len(_cache) < TASK_CACHE_MAX_ITEMS:
         return
@@ -189,6 +202,7 @@ def _enforce_cache_limits() -> None:
 
 
 def _get_cached_task(file_id: str, username: str, *, require_labels: bool = False, require_stats: bool = False) -> dict[str, Any]:
+    """读取任务缓存，并校验任务归属、预测结果和统计结果是否存在。"""
     _purge_expired_cache()
     cached = _cache.get(file_id)
     if not cached:
@@ -204,6 +218,7 @@ def _get_cached_task(file_id: str, username: str, *, require_labels: bool = Fals
 
 
 def _ensure_analysis_payload(cached: dict[str, Any]) -> None:
+    """确保缓存中存在统计、巡检和告警对象，缺失时按标签重新计算。"""
     if "labels" not in cached:
         raise HTTPException(404, "当前文件暂无分割结果")
     if "stats" not in cached:
@@ -215,6 +230,7 @@ def _ensure_analysis_payload(cached: dict[str, Any]) -> None:
 
 
 def _get_client_ip(request: Request) -> str:
+    """获取客户端 IP，优先读取反向代理传入的 x-forwarded-for。"""
     forwarded_for = request.headers.get("x-forwarded-for", "")
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
@@ -222,6 +238,7 @@ def _get_client_ip(request: Request) -> str:
 
 
 def _enforce_login_rate_limit(request: Request, username: str) -> str:
+    """按 IP 和用户名组合检查短时间登录失败次数是否超限。"""
     now = _utc_ts()
     key = f"{_get_client_ip(request)}:{username or 'anonymous'}"
     state = _login_attempts.get(key) or {}
@@ -238,6 +255,7 @@ def _enforce_login_rate_limit(request: Request, username: str) -> str:
 
 
 def _record_login_failure(key: str) -> None:
+    """记录一次来源级登录失败，达到阈值后短时间阻断。"""
     now = _utc_ts()
     state = _login_attempts.get(key) or {"count": 0, "window_started": now, "blocked_until": 0}
     if now - float(state.get("window_started", now)) > LOGIN_WINDOW_SECONDS:
@@ -253,6 +271,7 @@ def _clear_login_failures(key: str) -> None:
 
 
 def _require_admin(username: str = Depends(get_current_user)) -> str:
+    """管理员接口依赖函数，普通用户访问时直接返回 403。"""
     if not is_admin_user(username):
         raise HTTPException(403, "仅管理员可访问该功能")
     return username
@@ -260,6 +279,7 @@ def _require_admin(username: str = Depends(get_current_user)) -> str:
 
 @router.post("/auth/login")
 async def login(payload: LoginPayload, response: Response, request: Request):
+    """登录接口：校验账号状态和密码，成功后写入服务端会话并下发 Cookie。"""
     username = payload.username.strip()
     client_ip = _get_client_ip(request)
     user_agent = request.headers.get("user-agent", "")
@@ -307,6 +327,7 @@ async def login(payload: LoginPayload, response: Response, request: Request):
 
 @router.post("/auth/register")
 async def register(payload: RegisterPayload):
+    """普通用户注册接口。"""
     username = payload.username.strip()
     username_error = validate_username(username)
     if username_error:
@@ -328,6 +349,7 @@ async def change_password(
     username: str = Depends(get_current_user),
     session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ):
+    """修改当前用户密码，并清理除当前会话外的其他登录会话。"""
     if not verify_credentials(username, payload.current_password):
         raise HTTPException(401, "当前密码错误")
     password_error = validate_password_strength(payload.new_password)
@@ -342,6 +364,7 @@ async def change_password(
 
 @router.post("/auth/unlock")
 async def unlock_account(payload: UnlockPayload, request: Request):
+    """用户自助解锁接口，需要再次验证账号密码。"""
     username = payload.username.strip()
     client_ip = _get_client_ip(request)
     user_agent = request.headers.get("user-agent", "")
@@ -466,6 +489,7 @@ async def upload_pointcloud(file: UploadFile = File(...), username: str = Depend
     if ext not in (".pth", ".npy"):
         raise HTTPException(400, "仅支持 .pth 或 .npy 格式")
 
+    # 上传前先执行缓存容量控制，避免运行时任务无限增长。
     _enforce_cache_limits()
     file_id = uuid.uuid4().hex[:12]
     save_path = os.path.join(RAW_UPLOAD_DIR, f"{file_id}{ext}")
@@ -521,6 +545,7 @@ async def get_pointcloud(
     source: str = "pred",
     username: str = Depends(get_current_user),
 ):
+    """返回前端渲染所需的坐标、颜色和可选标签数组。"""
     cached = _get_cached_task(file_id, username)
     data = cached["data"]
     pred_labels = cached.get("labels")
@@ -532,6 +557,7 @@ async def get_pointcloud(
         raise HTTPException(400, "不支持的标签来源")
 
     n = data.shape[0]
+    # 降采样只影响前端显示点数，不改变后端统计和风险计算。
     if downsample > 0 and downsample < n:
         idx = np.random.choice(n, downsample, replace=False)
         idx.sort()
@@ -571,6 +597,7 @@ async def get_pointcloud(
 
 @router.post("/predict/{file_id}")
 async def run_prediction(file_id: str, username: str = Depends(get_current_user)):
+    """执行语义分割推理，并缓存预测标签、统计结果和巡检结果。"""
     cached = _get_cached_task(file_id, username)
     data = cached["data"]
 
@@ -612,6 +639,7 @@ async def run_prediction(file_id: str, username: str = Depends(get_current_user)
 
 @router.get("/statistics/{file_id}")
 async def get_statistics(file_id: str, username: str = Depends(get_current_user)):
+    """返回当前任务的统计结果、告警列表和巡检报告对象。"""
     cached = _get_cached_task(file_id, username, require_stats=True)
     _ensure_analysis_payload(cached)
     return {
@@ -623,6 +651,7 @@ async def get_statistics(file_id: str, username: str = Depends(get_current_user)
 
 @router.get("/risk-regions/{file_id}")
 async def get_risk_regions(file_id: str, username: str = Depends(get_current_user)):
+    """根据预测标签和巡检告警生成可在三维场景中定位的风险区域。"""
     cached = _get_cached_task(file_id, username, require_labels=True)
     _ensure_analysis_payload(cached)
     return {
@@ -637,6 +666,7 @@ async def get_risk_regions(file_id: str, username: str = Depends(get_current_use
 
 @router.post("/flood-assessment/{file_id}")
 async def assess_flood(file_id: str, payload: FloodAssessmentPayload, username: str = Depends(get_current_user)):
+    """融合人工输入水情参数，返回防洪预警评估结果。"""
     cached = _get_cached_task(file_id, username, require_labels=True)
     _ensure_analysis_payload(cached)
     result = assess_flood_risk_with_inputs(
@@ -652,6 +682,7 @@ async def assess_flood(file_id: str, payload: FloodAssessmentPayload, username: 
 
 @router.get("/embankment-assessment/{file_id}")
 async def assess_embankment(file_id: str, username: str = Depends(get_current_user)):
+    """返回堤坝岸坡专题风险评估结果。"""
     cached = _get_cached_task(file_id, username, require_labels=True)
     _ensure_analysis_payload(cached)
     result = assess_embankment_risk(cached["inspection"]["metrics"])
@@ -660,6 +691,7 @@ async def assess_embankment(file_id: str, username: str = Depends(get_current_us
 
 @router.post("/assistant/ask")
 async def ask_assistant(payload: AssistantPayload, username: str = Depends(get_current_user)):
+    """非流式 AI 问答接口，基于当前任务分析上下文生成回答。"""
     cached = _get_cached_task(payload.file_id, username, require_labels=True)
     _ensure_analysis_payload(cached)
     context = _build_assistant_context(file_id=payload.file_id, cached=cached)
@@ -680,6 +712,7 @@ async def ask_assistant(payload: AssistantPayload, username: str = Depends(get_c
 
 @router.post("/assistant/ask-stream")
 async def ask_assistant_stream(payload: AssistantPayload, username: str = Depends(get_current_user)):
+    """流式 AI 问答接口，把外部模型增量文本包装成 SSE 事件返回前端。"""
     cached = _get_cached_task(payload.file_id, username, require_labels=True)
     _ensure_analysis_payload(cached)
     context = _build_assistant_context(file_id=payload.file_id, cached=cached)
@@ -709,6 +742,7 @@ async def ask_assistant_stream(payload: AssistantPayload, username: str = Depend
 
 @router.get("/export/{file_id}")
 async def export_result(file_id: str, format: str = "json", username: str = Depends(get_current_user)):
+    """导出结构化统计结果，支持 JSON 和 CSV。"""
     cached = _get_cached_task(file_id, username, require_labels=True)
     _ensure_analysis_payload(cached)
     data, labels = cached["data"], cached["labels"]
@@ -733,6 +767,7 @@ async def export_result(file_id: str, format: str = "json", username: str = Depe
 
 @router.get("/inspection-report/{file_id}")
 async def export_inspection_report_api(file_id: str, format: str = "pdf", username: str = Depends(get_current_user)):
+    """导出自动巡检报告，前端主要使用 PDF 和 DOCX。"""
     cached = _get_cached_task(file_id, username, require_labels=True)
     _ensure_analysis_payload(cached)
 
@@ -779,6 +814,7 @@ def _hex_to_rgb(hex_color: str) -> list[int]:
 
 
 def _resolve_labels(mode: str, source: str, raw_labels: np.ndarray | None, pred_labels: np.ndarray | None):
+    """根据显示模式和标签来源选择原始标签或预测标签。"""
     if mode == "original":
         return None
 
@@ -793,6 +829,7 @@ def _resolve_labels(mode: str, source: str, raw_labels: np.ndarray | None, pred_
 
 
 def _build_business_color_map() -> dict[int, list[int]]:
+    """把业务分类颜色展开成类别 ID 到 RGB 颜色的映射。"""
     biz_palette = {
         "居民地设施": [230, 25, 75],
         "交通": [255, 225, 25],
@@ -810,6 +847,7 @@ def _build_business_color_map() -> dict[int, list[int]]:
 
 
 def _build_assistant_context(*, file_id: str, cached: dict[str, Any]) -> dict:
+    """整理 AI 问答所需的当前任务上下文。"""
     inspection = cached.get("inspection", {}) or {}
     alerts = inspection.get("alerts", []) or []
     regions = _build_risk_regions(cached["data"][:, :3], cached["labels"], alerts)
@@ -841,6 +879,7 @@ def _build_assistant_context(*, file_id: str, cached: dict[str, Any]) -> dict:
 
 
 def _build_assistant_alert_summary(alert: dict, region_map: dict[str, dict]) -> dict:
+    """把告警和对应风险区域合并为 AI 更容易引用的摘要对象。"""
     region = region_map.get(alert.get("code"), {})
     return {
         "code": alert.get("code"),
@@ -865,6 +904,7 @@ def _build_assistant_alert_summary(alert: dict, region_map: dict[str, dict]) -> 
 
 
 def _filter_regions_for_assistant(regions: list[dict]) -> list[dict]:
+    """优先保留有告警分数、原因或空间评分的风险区域给 AI 使用。"""
     strong_regions = [
         region
         for region in regions
@@ -878,6 +918,7 @@ def _filter_regions_for_assistant(regions: list[dict]) -> list[dict]:
 
 
 def _build_risk_regions(points: np.ndarray, labels: np.ndarray, alerts: list[dict]) -> list[dict]:
+    """根据告警类型和标签类别提取风险区域，未触发告警时补充兜底区域。"""
     alert_mapping = {
         "embankment_pressure": {
             "code": "embankment_pressure",
@@ -971,6 +1012,7 @@ def _extract_regions_from_class_group(
     score: int,
     reason: str,
 ) -> list[dict]:
+    """从指定类别点集中聚类出空间区域，并计算包围盒、密度和评分。"""
     selected_ids = _select_region_class_ids(labels, class_ids)
     if not selected_ids:
         return []
@@ -988,6 +1030,7 @@ def _extract_regions_from_class_group(
         bounds_min = cluster_points.min(axis=0)
         bounds_max = cluster_points.max(axis=0)
         extent = bounds_max - bounds_min
+        # 空间评分同时考虑平面范围、三维体积、二维密度和点数规模。
         footprint = max(float(extent[0]) * float(extent[1]), 0.001)
         volume = max(float(extent[0]) * float(extent[1]) * float(extent[2]), 0.001)
         density_2d = float(cluster_points.shape[0]) / max(footprint, 1.0)
@@ -1030,6 +1073,7 @@ def _extract_regions_from_class_group(
 
 
 def _cluster_region_points(points: np.ndarray) -> list[np.ndarray]:
+    """对风险点进行二维网格连通聚类，得到空间上连续的点集。"""
     if points.shape[0] <= 400:
         return [points]
 
@@ -1057,6 +1101,7 @@ def _cluster_region_points(points: np.ndarray) -> list[np.ndarray]:
     clusters: list[np.ndarray] = []
     min_cluster_points = 120
 
+    # 采用 8 邻域搜索相邻网格：上下左右和四个对角方向都视为连通。
     for start_cell in cell_to_indices:
         if start_cell in visited:
             continue
@@ -1101,6 +1146,7 @@ def _cluster_region_points(points: np.ndarray) -> list[np.ndarray]:
 
 
 def _cluster_region_points_by_grid(points: np.ndarray, cell_size: float, min_cluster_points: int) -> list[np.ndarray]:
+    """在指定网格大小下重新聚类，用于单一区域过大时做二次细分。"""
     xy = points[:, :2]
     min_xy = xy.min(axis=0)
     grid = np.floor((xy - min_xy) / max(cell_size, 1e-6)).astype(int)
@@ -1141,6 +1187,7 @@ def _cluster_region_points_by_grid(points: np.ndarray, cell_size: float, min_clu
 
 
 def _dedupe_regions_by_family(regions: list[dict]) -> list[dict]:
+    """按风险家族去重，保留每类风险中评分和点数更突出的区域。"""
     grouped: dict[str, list[dict]] = {}
     for region in regions:
         grouped.setdefault(region.get("family") or region["code"], []).append(region)
@@ -1171,6 +1218,7 @@ def _dedupe_regions_by_family(regions: list[dict]) -> list[dict]:
 
 
 def _select_region_class_ids(labels: np.ndarray, candidate_ids: list[int]) -> list[int]:
+    """从候选类别中选择实际存在且点数占主导的类别参与区域定位。"""
     present = []
     int_labels = labels.astype(int)
     for class_id in candidate_ids:

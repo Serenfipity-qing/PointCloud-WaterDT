@@ -1,6 +1,7 @@
 const recentTaskCard = document.getElementById('recentTaskCard');
 const task = window.TaskState?.read?.();
 
+// 首页读取最近一次点云任务状态，方便用户从总览页继续进入分析流程。
 if (task && recentTaskCard) {
     const updatedAt = task.updatedAt ? new Date(task.updatedAt).toLocaleString('zh-CN') : '未知';
     recentTaskCard.innerHTML = `

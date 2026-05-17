@@ -16,6 +16,7 @@ renderInspection().catch((err) => {
 });
 
 async function renderInspection() {
+    // 巡检页面读取当前任务的巡检结果；本地缺失时通过统计接口补齐。
     if (!inspectionTask || !inspectionTask.fileId || !inspectionTask.hasPrediction) {
         renderInspectionEmpty('请先在点云分析页完成分割任务');
         return;
@@ -89,6 +90,7 @@ async function renderInspection() {
 }
 
 function renderInspectionEmpty(message) {
+    // 未完成点云分割或加载失败时显示空状态。
     inspectionTaskCard.innerHTML = `
         <div class="sidebar-label">当前任务</div>
         <div class="sidebar-value">未分析</div>
@@ -105,6 +107,7 @@ function renderInspectionEmpty(message) {
 }
 
 function buildInspectionFallback(alerts) {
+    // 兼容旧缓存：如果没有完整 inspection 对象，则用 alerts 临时构造展示数据。
     if (!alerts.length) {
         return {
             overall: {

@@ -1,4 +1,8 @@
-"""OpenAI-backed assistant service for analysis Q&A."""
+"""OpenAI-backed assistant service for analysis Q&A.
+
+本模块不直接计算风险，而是把后端已经生成的统计、告警和风险区域结果
+整理为提示词上下文，再调用兼容 OpenAI Responses API 的外部模型进行解释。
+"""
 from __future__ import annotations
 
 import json
@@ -16,6 +20,7 @@ QUESTION_HINTS = {
 
 
 def ask_analysis_assistant(*, question: str, analysis_context: dict, question_type: str | None = None) -> dict:
+    """普通问答接口：等待外部模型完整返回后再交给前端。"""
     settings = load_ai_settings()
     _validate_settings(settings)
 
@@ -62,6 +67,7 @@ def ask_analysis_assistant(*, question: str, analysis_context: dict, question_ty
 
 
 def stream_analysis_assistant(*, question: str, analysis_context: dict, question_type: str | None = None):
+    """流式问答接口：逐块读取外部模型增量文本并向上层生成。"""
     settings = load_ai_settings()
     _validate_settings(settings)
 
@@ -131,6 +137,7 @@ def stream_analysis_assistant(*, question: str, analysis_context: dict, question
 
 
 def _build_user_prompt(*, question: str, analysis_context: dict, question_type: str | None) -> str:
+    """把用户问题、回答要求和当前任务分析上下文拼成模型输入。"""
     hint = QUESTION_HINTS.get(question_type or "", "请直接回答用户问题。")
     context_json = json.dumps(analysis_context, ensure_ascii=False, indent=2)
     return (
@@ -150,6 +157,7 @@ def _build_user_prompt(*, question: str, analysis_context: dict, question_type: 
 
 
 def _extract_response_text(data: dict) -> str:
+    """兼容 Responses API 的不同返回结构，提取最终文本内容。"""
     output_text = data.get("output_text")
     if isinstance(output_text, str) and output_text.strip():
         return output_text.strip()
@@ -164,6 +172,7 @@ def _extract_response_text(data: dict) -> str:
 
 
 def _validate_settings(settings: dict) -> None:
+    """检查 AI 功能是否启用、服务商是否支持以及 API Key 是否存在。"""
     if not settings.get("enabled"):
         raise ValueError("AI assistant is disabled in ai_settings.json")
     if settings.get("provider") != "openai":
@@ -173,6 +182,7 @@ def _validate_settings(settings: dict) -> None:
 
 
 def _build_request(settings: dict, body: bytes) -> request.Request:
+    """构造发往外部 AI 服务的 HTTP 请求。"""
     base_url = settings["base_url"].rstrip("/")
     return request.Request(
         url=f"{base_url}/responses",
@@ -186,6 +196,7 @@ def _build_request(settings: dict, body: bytes) -> request.Request:
 
 
 def _post_json(settings: dict, payload: dict) -> str:
+    """发送非流式 JSON 请求，并把外部服务原始响应文本返回。"""
     body = json.dumps(payload).encode("utf-8")
     req = _build_request(settings, body)
     try:

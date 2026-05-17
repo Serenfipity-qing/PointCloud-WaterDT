@@ -25,6 +25,7 @@ floodForm?.addEventListener('submit', (event) => {
 });
 
 function renderFloodTask() {
+    // 显示当前已完成语义分割的点云任务信息。
     if (!floodTaskCard) return;
     if (!floodTask || !floodTask.fileId || !floodTask.hasPrediction) {
         floodTaskCard.innerHTML = `
@@ -44,6 +45,7 @@ function renderFloodTask() {
 }
 
 function restoreFloodFormState() {
+    // 从跨页面状态恢复上一次输入的水情参数。
     const inputs = floodTask?.floodState?.inputs;
     if (!floodForm || !inputs) {
         return;
@@ -76,6 +78,7 @@ function restoreFloodResultState() {
 }
 
 async function calculateFloodRisk() {
+    // 提交水位、降雨和排水状态，由后端融合点云指标计算防洪预警。
     floodTask = window.TaskState?.read?.() || floodTask;
     const formData = new FormData(floodForm);
     const cachedFloodState = floodTask?.floodState || {};
@@ -118,6 +121,7 @@ async function calculateFloodRisk() {
 }
 
 function applyFloodAssessment(assessment, inputs) {
+    // 把后端返回的防洪评分、预警等级、风险因素和建议渲染到页面。
     const ratios = floodTask?.inspection?.metrics?.ratios || {};
     const floodEngine = floodTask?.inspection?.flood || {};
     const waterLevel = readNumber(inputs?.water_level, 0);

@@ -1,6 +1,7 @@
 window.WATER_TWIN_API = window.WATER_TWIN_API || '';
 const AUTH_API_BASE = window.WATER_TWIN_API;
 
+// 所有页面共用的认证脚本：认证页绑定表单，业务页先校验会话。
 const path = window.location.pathname.toLowerCase();
 const pageName = path.split('/').pop();
 const isAuthPage = ['login.html', 'register.html', 'change-password.html'].includes(pageName);
@@ -16,6 +17,7 @@ if (pageName === 'login.html') {
 }
 
 async function guardPage() {
+    // 非登录页加载时先请求当前用户接口，未登录则跳回登录页。
     try {
         const res = await fetch(`${AUTH_API_BASE}/api/auth/me`, { credentials: 'include' });
         if (!res.ok) {
@@ -39,6 +41,7 @@ function redirectToLogin() {
 }
 
 function commonSubmit(binding, requestFn) {
+    // 统一处理登录、注册、修改密码表单的提交状态和错误提示。
     const form = document.getElementById(binding.formId);
     const btn = document.getElementById(binding.buttonId);
     const errorEl = document.getElementById(binding.errorId);
@@ -63,6 +66,7 @@ function commonSubmit(binding, requestFn) {
 }
 
 function initLoginPage() {
+    // 登录成功后后端会通过 HttpOnly Cookie 写入会话令牌。
     commonSubmit(
         { formId: 'loginForm', buttonId: 'btnLogin', errorId: 'loginError', buttonText: '登录' },
         async (form) => {
@@ -165,6 +169,7 @@ function initChangePasswordPage() {
 }
 
 function injectUserMenu(username, isAdmin = false) {
+    // 给业务页面右上角注入当前用户菜单，并提供登出入口。
     if (document.querySelector('[data-user-menu]')) {
         return;
     }
@@ -232,6 +237,7 @@ function validatePasswordStrength(password) {
 }
 
 function renderSecurityNotice() {
+    // 登录环境变化提示只在本次会话中展示一次。
     const message = sessionStorage.getItem('waterTwinSecurityNotice');
     if (!message || document.querySelector('[data-security-notice]')) {
         return;

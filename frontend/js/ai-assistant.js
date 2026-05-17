@@ -52,6 +52,7 @@ btnToggleAssistantHistory?.addEventListener('click', toggleHistoryPanel);
 initAssistant();
 
 function initAssistant() {
+    // AI 页面必须依赖已完成分割的当前任务，否则没有分析上下文可问答。
     if (!assistantTask || !assistantTask.fileId || !assistantTask.hasPrediction) {
         renderAssistantEmpty('请先在点云分析页完成一次语义分割任务');
         return;
@@ -76,6 +77,7 @@ function renderTaskCard(taskState) {
 }
 
 function ensureActiveSession() {
+    // 按当前文件恢复最近会话；没有历史会话时自动新建。
     const currentTask = window.TaskState?.read?.();
     const sessions = getSessionsForCurrentFile();
     if (!currentTask?.fileId) {
@@ -118,6 +120,7 @@ function createNewChatSession() {
 }
 
 function createSessionRecord(fileId) {
+    // 会话记录保存在浏览器本地，按文件编号隔离。
     const sessions = readAssistantSessions();
     const now = new Date().toISOString();
     const next = {
@@ -274,6 +277,7 @@ function renderPersistedSession() {
 }
 
 async function askAssistant(regenerate = false) {
+    // 发送用户问题，优先复用缓存；没有缓存时调用后端流式 AI 接口。
     const currentTask = window.TaskState?.read?.();
     if (!currentTask || !currentTask.fileId || !currentTask.hasPrediction) {
         renderAssistantEmpty('当前没有可用的分析结果');
@@ -553,6 +557,7 @@ function getSessionsForCurrentFile(sessions = readAssistantSessions()) {
 }
 
 function readAssistantCache() {
+    // 读取同一任务同一问题的回答缓存，减少重复请求外部模型。
     try {
         return JSON.parse(localStorage.getItem(ASSISTANT_CACHE_KEY) || '{}');
     } catch (err) {
@@ -562,6 +567,7 @@ function readAssistantCache() {
 }
 
 function writeAssistantCache(key, value) {
+    // 限制缓存数量，保留最近使用的回答结果。
     const cache = readAssistantCache();
     cache[key] = value;
     try {
@@ -594,6 +600,7 @@ function readAssistantSessions() {
 }
 
 function writeAssistantSessions(sessions) {
+    // 会话数量设置上限，避免浏览器本地存储长期膨胀。
     try {
         localStorage.setItem(ASSISTANT_SESSIONS_KEY, JSON.stringify(sessions.slice(0, MAX_SESSION_COUNT)));
     } catch (err) {
@@ -606,6 +613,7 @@ function getCurrentSession() {
 }
 
 function persistSessionMessage(message) {
+    // 把用户或助手消息写入当前文件对应的会话历史。
     if (!currentSessionId || !assistantTask?.fileId) {
         return;
     }
@@ -712,6 +720,7 @@ function renderStreamingPreview(text) {
 }
 
 function renderMarkdownAnswer(text) {
+    // 轻量 Markdown 渲染，用于把 AI 回答中的列表、代码块和表格展示出来。
     const normalized = String(text || '').replace(/\r\n/g, '\n').trim();
     if (!normalized) return '<p>模型没有返回有效内容。</p>';
 
